@@ -34,3 +34,5 @@ PYTHONPATH="src/rai_core:$PYTHONPATH"
 PYTHONPATH="src/rai_sim:$PYTHONPATH"
 PYTHONPATH="src/rai_s2s:$PYTHONPATH"
 PYTHONPATH="src/rai_bench:$PYTHONPATH"
+
+export PATH=$PATH:/usr/local/cuda/bin

@@ -42,8 +42,18 @@ class GetObjectPositionsGroundTruthTool(BaseTool):
     )
 
     @staticmethod
-    def format_pose(pose: Pose) -> str:
-        return f"Centroid(x={pose.position.x:.2f}, y={pose.position.y:.2f}, z={pose.position.z:.2f})"
+    def format_pose(pose) -> str:
+        # Handle both Pose (ROS2 geometry_msgs) and Pose2D objects
+        if hasattr(pose, 'position'):
+            # Standard ROS2 Pose with position attribute
+            return f"Centroid(x={pose.position.x:.2f}, y={pose.position.y:.2f}, z={pose.position.z:.2f})"
+        elif hasattr(pose, 'x') and hasattr(pose, 'y'):
+            # Pose2D-like object with direct x, y attributes
+            z_val = getattr(pose, 'z', 0.0)  # Default z to 0.0 if not present
+            return f"Centroid(x={pose.x:.2f}, y={pose.y:.2f}, z={z_val:.2f})"
+        else:
+            # Fallback for unknown pose types
+            return f"Centroid(pose_type={type(pose).__name__}, data={str(pose)})"
 
     @staticmethod
     def match_name(object_name: str, prefab_name: str) -> bool:

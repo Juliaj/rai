@@ -73,8 +73,8 @@ class GetSegmentationTool:
     name: str = ""
     description: str = ""
 
-    box_threshold: float = Field(default=0.35, description="Box threshold for GDINO")
-    text_threshold: float = Field(default=0.45, description="Text threshold for GDINO")
+    box_threshold: float = Field(default=0.25, description="Box threshold for GDINO (lower = more detections)")
+    text_threshold: float = Field(default=0.35, description="Text threshold for GDINO (lower = more matches)")
 
     args_schema: Type[GetSegmentationInput] = GetSegmentationInput
 
@@ -202,16 +202,116 @@ class GetGrabbingPointTool(BaseTool):
     pcd: List[Any] = []
 
     args_schema: Type[GetGrabbingPointInput] = GetGrabbingPointInput
-    box_threshold: float = Field(default=0.35, description="Box threshold for GDINO")
-    text_threshold: float = Field(default=0.45, description="Text threshold for GDINO")
+    box_threshold: float = Field(default=0.25, description="Box threshold for GDINO (lower = more detections)")
+    text_threshold: float = Field(default=0.35, description="Text threshold for GDINO (lower = more matches)")
 
     def _get_gdino_response(
         self, future: Future
     ) -> Optional[RAIGroundingDino.Response]:
-        return get_future_result(future)
+        logger = self.connector.node.get_logger()
+        logger.info("🔍 [GDINO] Waiting for response...")
+        response = get_future_result(future, timeout_sec=30.0)  # 30 second timeout
+        
+        if response is not None:
+            detections = response.detections.detections
+            logger.info(f"🔍 [GDINO] Response received: {len(detections)} detection(s)")
+            for i, detection in enumerate(detections):
+                bbox = detection.bbox
+                # logger.info(f"🔍 [GDINO] Detection {i+1}: bbox=({bbox.center.x:.1f}, {bbox.center.y:.1f}, {bbox.size_x:.1f}, {bbox.size_y:.1f})")
+        else:
+            # Check future status to distinguish between timeout and failure
+            if future.done():
+                if future.exception() is not None:
+                    logger.error(f"🔍 [GDINO] Service call failed with exception: {future.exception()}")
+                else:
+                    logger.error("🔍 [GDINO] Service call completed but returned None")
+            else:
+                logger.error("🔍 [GDINO] Service call timed out after 30 seconds")
+                # Save the image for debugging when timeout occurs
+                self._save_debug_image()
+        
+        return response
+
+    def _save_debug_image(self):
+        """Save the camera image for debugging when GDINO times out"""
+        if hasattr(self, '_debug_camera_image') and hasattr(self, '_debug_object_name'):
+            try:
+                import cv2
+                import numpy as np
+                import os
+                from datetime import datetime
+                
+                logger = self.connector.node.get_logger()
+                
+                # Convert ROS image to OpenCV format
+                img_array = convert_ros_img_to_ndarray(self._debug_camera_image)
+                
+                # Create debug directory if it doesn't exist
+                debug_dir = "debug_images"
+                os.makedirs(debug_dir, exist_ok=True)
+                
+                # Generate filename with timestamp and object name
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"{debug_dir}/gdino_timeout_{self._debug_object_name}_{timestamp}.jpg"
+                
+                # Save image
+                cv2.imwrite(filename, img_array)
+                logger.info(f"🔍 [GDINO] Debug image saved: {filename}")
+                logger.info(f"🔍 [GDINO] Image details: {img_array.shape}, dtype={img_array.dtype}, range=[{img_array.min()}, {img_array.max()}]")
+                
+                # Also save depth image if available
+                if hasattr(self, '_debug_depth_image'):
+                    try:
+                        depth_array = convert_ros_img_to_ndarray(self._debug_depth_image)
+                        
+                        # Normalize depth image for visualization
+                        if depth_array.dtype == np.uint16:
+                            # Convert 16-bit depth to 8-bit for saving
+                            depth_normalized = (depth_array.astype(np.float32) / 65535.0 * 255).astype(np.uint8)
+                        elif depth_array.dtype == np.float32:
+                            # Normalize float depth to 8-bit
+                            depth_min, depth_max = depth_array.min(), depth_array.max()
+                            if depth_max > depth_min:
+                                depth_normalized = ((depth_array - depth_min) / (depth_max - depth_min) * 255).astype(np.uint8)
+                            else:
+                                depth_normalized = depth_array.astype(np.uint8)
+                        else:
+                            depth_normalized = depth_array
+                        
+                        depth_filename = f"{debug_dir}/gdino_timeout_depth_{self._debug_object_name}_{timestamp}.png"
+                        cv2.imwrite(depth_filename, depth_normalized)
+                        logger.info(f"🔍 [GDINO] Debug depth image saved: {depth_filename}")
+                        logger.info(f"🔍 [GDINO] Depth image details: {depth_array.shape}, dtype={depth_array.dtype}, range=[{depth_array.min()}, {depth_array.max()}]")
+                        logger.info(f"🔍 [GDINO] Normalized depth range: [{depth_normalized.min()}, {depth_normalized.max()}]")
+                    except Exception as e:
+                        logger.warning(f"🔍 [GDINO] Could not save depth image: {e}")
+                        
+            except Exception as e:
+                logger.error(f"🔍 [GDINO] Failed to save debug image: {e}")
+        else:
+            logger.warning("🔍 [GDINO] No debug image available to save")
 
     def _get_gsam_response(self, future: Future) -> Optional[RAIGroundedSam.Response]:
-        return get_future_result(future)
+        logger = self.connector.node.get_logger()
+        logger.info("🎯 [GSAM] Waiting for response...")
+        response = get_future_result(future, timeout_sec=30.0)  # 30 second timeout
+        
+        if response is not None:
+            masks = response.masks
+            logger.info(f"🎯 [GSAM] Response received: {len(masks)} mask(s)")
+            for i, mask in enumerate(masks):
+                logger.info(f"🎯 [GSAM] Mask {i+1}: encoding={mask.encoding}, width={mask.width}, height={mask.height}")
+        else:
+            # Check future status to distinguish between timeout and failure
+            if future.done():
+                if future.exception() is not None:
+                    logger.error(f"🎯 [GSAM] Service call failed with exception: {future.exception()}")
+                else:
+                    logger.error("🎯 [GSAM] Service call completed but returned None")
+            else:
+                logger.error("🎯 [GSAM] Service call timed out after 30 seconds")
+        
+        return response
 
     def _get_image_message(self, topic: str) -> sensor_msgs.msg.Image:
         msg = self.connector.receive_message(topic).payload
@@ -223,33 +323,82 @@ class GetGrabbingPointTool(BaseTool):
     def _call_gdino_node(
         self, camera_img_message: sensor_msgs.msg.Image, object_name: str
     ) -> Future:
+        logger = self.connector.node.get_logger()
+        logger.info(f"🔍 [GDINO] Starting object detection for '{object_name}'")
+        logger.info(f"🔍 [GDINO] Image size: {camera_img_message.width}x{camera_img_message.height}")
+        logger.info(f"🔍 [GDINO] Image encoding: {camera_img_message.encoding}")
+        logger.info(f"🔍 [GDINO] Image step: {camera_img_message.step}")
+        logger.info(f"🔍 [GDINO] Image data size: {len(camera_img_message.data)} bytes")
+        logger.info(f"🔍 [GDINO] Thresholds: box={self.box_threshold}, text={self.text_threshold}")
+        
+        # Check if image data looks reasonable
+        if len(camera_img_message.data) == 0:
+            logger.error("🔍 [GDINO] ERROR: Image data is empty!")
+            raise Exception("Empty image data")
+        
+        expected_size = camera_img_message.width * camera_img_message.height
+        if camera_img_message.encoding in ['rgb8', 'bgr8']:
+            expected_size *= 3
+        elif camera_img_message.encoding in ['rgba8', 'bgra8']:
+            expected_size *= 4
+        
+        if len(camera_img_message.data) < expected_size * 0.5:  # Allow some compression
+            logger.warning(f"🔍 [GDINO] WARNING: Image data size seems small. Expected ~{expected_size}, got {len(camera_img_message.data)}")
+        
         cli = self.connector.node.create_client(RAIGroundingDino, GDINO_SERVICE_NAME)
+        wait_count = 0
         while not cli.wait_for_service(timeout_sec=1.0):
-            self.connector.node.get_logger().info(
-                "service not available, waiting again..."
-            )
+            wait_count += 1
+            logger.warning(f"🔍 [GDINO] Service not available, waiting... (attempt {wait_count})")
+            if wait_count > 10:
+                logger.error("🔍 [GDINO] Service wait timeout exceeded!")
+                raise Exception("Grounding DINO service not available after 10 attempts")
+        
+        logger.info("🔍 [GDINO] Service available, creating request...")
         req = RAIGroundingDino.Request()
         req.source_img = camera_img_message
         req.classes = object_name
         req.box_threshold = self.box_threshold
         req.text_threshold = self.text_threshold
 
+        logger.info(f"🔍 [GDINO] Sending request with classes='{object_name}', box_threshold={self.box_threshold}, text_threshold={self.text_threshold}")
         future = cli.call_async(req)
+        logger.info("🔍 [GDINO] Request sent, waiting for response...")
+        
+        # Store the image for potential debugging
+        self._debug_camera_image = camera_img_message
+        self._debug_object_name = object_name
+        
         return future
 
     def _call_gsam_node(
         self, camera_img_message: sensor_msgs.msg.Image, data: RAIGroundingDino.Response
     ):
+        logger = self.connector.node.get_logger()
+        logger.info(f"🎯 [GSAM] Starting segmentation with {len(data.detections.detections)} detection(s)")
+        
+        # Log detection details
+        for i, detection in enumerate(data.detections.detections):
+            bbox = detection.bbox
+            # logger.info(f"🎯 [GSAM] Detection {i+1}: bbox=({bbox.center.x:.1f}, {bbox.center.y:.1f}, {bbox.size_x:.1f}, {bbox.size_y:.1f})")
+        
         cli = self.connector.node.create_client(RAIGroundedSam, "grounded_sam_segment")
+        wait_count = 0
         while not cli.wait_for_service(timeout_sec=1.0):
-            self.connector.node.get_logger().info(
-                "service not available, waiting again..."
-            )
+            wait_count += 1
+            logger.warning(f"🎯 [GSAM] Service not available, waiting... (attempt {wait_count})")
+            if wait_count > 10:
+                logger.error("🎯 [GSAM] Service wait timeout exceeded!")
+                raise Exception("Grounded SAM service not available after 10 attempts")
+        
+        logger.info("🎯 [GSAM] Service available, creating request...")
         req = RAIGroundedSam.Request()
         req.detections = data.detections
         req.source_img = camera_img_message
+        
+        logger.info(f"🎯 [GSAM] Sending segmentation request for {len(data.detections.detections)} detection(s)")
         future = cli.call_async(req)
-
+        logger.info("🎯 [GSAM] Request sent, waiting for response...")
         return future
 
     def _get_camera_info_message(self, topic: str) -> sensor_msgs.msg.CameraInfo:
@@ -280,26 +429,59 @@ class GetGrabbingPointTool(BaseTool):
         intrinsic: Sequence[float],
         depth_to_meters_ratio: float,
     ):
+        logger = self.connector.node.get_logger()
+        logger.info(f"🔧 [ProcessMask] Starting mask processing...")
+        
+        # Convert mask to numpy array
         mask = convert_ros_img_to_ndarray(mask_msg)
         binary_mask = np.where(mask == 255, 1, 0)
+        logger.info(f"🔧 [ProcessMask] Mask shape: {mask.shape}, binary mask sum: {np.sum(binary_mask)}")
+        
+        # Convert depth to numpy array
         depth = convert_ros_img_to_ndarray(depth_msg)
+        logger.info(f"🔧 [ProcessMask] Depth shape: {depth.shape}, depth range: [{np.min(depth)}, {np.max(depth)}]")
+        
+        # Apply mask to depth
         masked_depth_image = np.zeros_like(depth, dtype=np.float32)
         masked_depth_image[binary_mask == 1] = depth[binary_mask == 1]
         masked_depth_image = masked_depth_image * depth_to_meters_ratio
+        
+        valid_depth_pixels = np.sum(masked_depth_image > 0)
+        logger.info(f"🔧 [ProcessMask] Valid depth pixels after masking: {valid_depth_pixels}")
+        
+        if valid_depth_pixels == 0:
+            logger.error("🔧 [ProcessMask] No valid depth pixels found in masked region!")
+            raise Exception("No valid depth pixels in masked region")
 
+        # Generate point cloud
+        logger.info("🔧 [ProcessMask] Generating point cloud...")
         pcd = depth_to_point_cloud(
             masked_depth_image, intrinsic[0], intrinsic[1], intrinsic[2], intrinsic[3]
         )
+        logger.info(f"🔧 [ProcessMask] Point cloud generated: {len(pcd)} points")
 
         # TODO: Filter out outliers
         points = pcd
+        
+        if len(points) == 0:
+            logger.error("🔧 [ProcessMask] No points in point cloud!")
+            raise Exception("Empty point cloud generated")
 
-        # https://github.com/ycheng517/tabletop-handybot/blob/6d401e577e41ea86529d091b406fbfc936f37a8d/tabletop_handybot/tabletop_handybot/tabletop_handybot_node.py#L413-L424
+        # Calculate grasping parameters
+        logger.info("🔧 [ProcessMask] Calculating grasping parameters...")
         grasp_z = points[:, 2].max()
         near_grasp_z_points = points[points[:, 2] > grasp_z - 0.008]
+        logger.info(f"🔧 [ProcessMask] Grasp Z: {grasp_z:.3f}, near grasp points: {len(near_grasp_z_points)}")
+        
+        if len(near_grasp_z_points) == 0:
+            logger.error("🔧 [ProcessMask] No near grasp points found!")
+            raise Exception("No near grasp points found")
+        
         xy_points = near_grasp_z_points[:, :2]
         xy_points = xy_points.astype(np.float32)
         _, dimensions, theta = cv2.minAreaRect(xy_points)
+        
+        logger.info(f"🔧 [ProcessMask] Min area rect: dimensions=({dimensions[0]:.3f}, {dimensions[1]:.3f}), theta={theta:.1f}°")
 
         gripper_rotation = theta
         # NOTE  - estimated dimentsion from the RGBDCamera5 not very precise, what may cause not desired rotation
@@ -309,9 +491,14 @@ class GetGrabbingPointTool(BaseTool):
             gripper_rotation += 180
         elif gripper_rotation > 90:
             gripper_rotation -= 180
+        
+        logger.info(f"🔧 [ProcessMask] Final gripper rotation: {gripper_rotation:.1f}°")
 
         # Calculate full 3D centroid for OBJECT
         centroid = np.mean(points, axis=0)
+        logger.info(f"🔧 [ProcessMask] Centroid: ({centroid[0]:.3f}, {centroid[1]:.3f}, {centroid[2]:.3f})")
+        
+        logger.info(f"✅ [ProcessMask] Successfully processed mask. Centroid=({centroid[0]:.3f}, {centroid[1]:.3f}, {centroid[2]:.3f}), rotation={gripper_rotation:.1f}°")
         return centroid, gripper_rotation
 
     def _run(
@@ -321,14 +508,46 @@ class GetGrabbingPointTool(BaseTool):
         camera_info_topic: str,
         object_name: str,
     ):
+        logger = self.connector.node.get_logger()
+        logger.info(f"🚀 [GetGrabbingPointTool] Starting for object: '{object_name}'")
+        logger.info(f"🚀 [GetGrabbingPointTool] Topics: camera={camera_topic}, depth={depth_topic}, info={camera_info_topic}")
+        
+        # Get camera messages
+        logger.info("📷 [GetGrabbingPointTool] Receiving camera messages...")
         camera_img_msg = self.connector.receive_message(camera_topic).payload
         depth_msg = self.connector.receive_message(depth_topic).payload
         camera_info = self._get_camera_info_message(camera_info_topic)
+        
+        logger.info(f"📷 [GetGrabbingPointTool] Camera image: {camera_img_msg.width}x{camera_img_msg.height}, encoding={camera_img_msg.encoding}, data_size={len(camera_img_msg.data)} bytes")
+        logger.info(f"📷 [GetGrabbingPointTool] Depth image: {depth_msg.width}x{depth_msg.height}, encoding={depth_msg.encoding}, data_size={len(depth_msg.data)} bytes")
+        
+        # Check depth image quality
+        if len(depth_msg.data) == 0:
+            logger.error("📷 [GetGrabbingPointTool] ERROR: Depth image data is empty!")
+            raise Exception("Empty depth image data")
+        
+        # Log depth image statistics
+        try:
+            import numpy as np
+            from rai.communication.ros2.api import convert_ros_img_to_ndarray
+            depth_array = convert_ros_img_to_ndarray(depth_msg)
+            logger.info(f"📷 [GetGrabbingPointTool] Depth image stats: min={np.min(depth_array)}, max={np.max(depth_array)}, mean={np.mean(depth_array):.2f}")
+            logger.info(f"📷 [GetGrabbingPointTool] Depth image non-zero pixels: {np.sum(depth_array > 0)}/{depth_array.size}")
+            
+            # Store depth image for debugging
+            self._debug_depth_image = depth_msg
+        except Exception as e:
+            logger.warning(f"📷 [GetGrabbingPointTool] Could not analyze depth image: {e}")
 
+        # Get camera intrinsics
         intrinsic = self._get_intrinsic_from_camera_info(camera_info)
+        logger.info(f"📷 [GetGrabbingPointTool] Camera intrinsics: fx={intrinsic[0]:.1f}, fy={intrinsic[1]:.1f}, cx={intrinsic[2]:.1f}, cy={intrinsic[3]:.1f}")
 
+        # Call Grounding DINO
+        logger.info("🔍 [GetGrabbingPointTool] Calling Grounding DINO...")
         future = self._call_gdino_node(camera_img_msg, object_name)
-        logger = self.connector.node.get_logger()
+        
+        # Get conversion ratio
         try:
             conversion_ratio = self.connector.node.get_parameter(
                 "conversion_ratio"
@@ -343,28 +562,44 @@ class GetGrabbingPointTool(BaseTool):
                 "Parameter conversion_ratio not found in node, using default value: 0.001"
             )
             conversion_ratio = 0.001
-        resolved = None
+        
+        logger.info(f"📏 [GetGrabbingPointTool] Using conversion_ratio: {conversion_ratio}")
 
-        resolved = get_future_result(future)
+        # Get DINO response
+        resolved = self._get_gdino_response(future)
+        
+        if resolved is None or len(resolved.detections.detections) == 0:
+            logger.warning(f"⚠️ [GetGrabbingPointTool] No detections found for '{object_name}'")
+            return []
 
-        assert resolved is not None
+        # Call Grounded SAM
+        logger.info("🎯 [GetGrabbingPointTool] Calling Grounded SAM...")
         future = self._call_gsam_node(camera_img_msg, resolved)
 
-        ret = []
-        resolved = get_future_result(future)
-        if resolved is not None:
-            for img_msg in resolved.masks:
-                ret.append(convert_ros_img_to_base64(img_msg))
-        assert resolved is not None
+        # Get SAM response
+        resolved = self._get_gsam_response(future)
+        
+        if resolved is None or len(resolved.masks) == 0:
+            logger.warning(f"⚠️ [GetGrabbingPointTool] No masks generated for '{object_name}'")
+            return []
+
+        # Process masks
+        logger.info(f"🔧 [GetGrabbingPointTool] Processing {len(resolved.masks)} mask(s)...")
         rets = []
-        for mask_msg in resolved.masks:
-            rets.append(
-                self._process_mask(
+        for i, mask_msg in enumerate(resolved.masks):
+            logger.info(f"🔧 [GetGrabbingPointTool] Processing mask {i+1}/{len(resolved.masks)}")
+            try:
+                result = self._process_mask(
                     mask_msg,
                     depth_msg,
                     intrinsic,
                     depth_to_meters_ratio=conversion_ratio,
                 )
-            )
+                rets.append(result)
+                logger.info(f"✅ [GetGrabbingPointTool] Mask {i+1} processed successfully")
+            except Exception as e:
+                logger.error(f"❌ [GetGrabbingPointTool] Failed to process mask {i+1}: {e}")
+                continue
 
+        logger.info(f"🎉 [GetGrabbingPointTool] Completed. Generated {len(rets)} grabbing point(s)")
         return rets

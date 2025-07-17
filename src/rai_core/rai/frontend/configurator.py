@@ -851,6 +851,7 @@ def review_and_save():
 
         def test_tts():
             vendor = st.session_state.config["tts"]["vendor"]
+            logging.info(f"Testing TTS with vendor: {vendor}")
             if vendor == "elevenlabs":
                 try:
                     from elevenlabs import ElevenLabs
@@ -892,7 +893,7 @@ def review_and_save():
 
             devices = sd.query_devices()
             index = [device["name"] for device in devices].index(device_name)
-            sample_rate = int(devices[device_index]["default_samplerate"])
+            sample_rate = int(devices[index]["default_samplerate"])
             try:
                 recording = sd.rec(
                     device=index,
@@ -980,6 +981,7 @@ def setup_steps():
 
         step_names.append("🎙️ Speech Recognition")
         step_render.append(asr)
+        st.session_state.features["s2s"] = True
     except ImportError:
         st.session_state.features["s2s"] = False
         logging.warning(
@@ -992,6 +994,7 @@ def setup_steps():
 
         step_names.append("🔊 Text to Speech")
         step_render.append(tts)
+        st.session_state.features["s2s"] = True
     except ImportError:
         st.session_state.features["s2s"] = False
         logging.warning(

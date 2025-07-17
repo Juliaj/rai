@@ -81,8 +81,8 @@ class DistanceMeasurement(NamedTuple):
 class GroundingDinoBaseTool(BaseTool):
     connector: ROS2Connector = Field(..., exclude=True)
 
-    box_threshold: float = Field(default=0.35, description="Box threshold for GDINO")
-    text_threshold: float = Field(default=0.45, description="Text threshold for GDINO")
+    box_threshold: float = Field(default=0.25, description="Box threshold for GDINO (lower = more detections)")
+    text_threshold: float = Field(default=0.35, description="Text threshold for GDINO (lower = more matches)")
 
     def _call_gdino_node(
         self, camera_img_message: sensor_msgs.msg.Image, object_names: list[str]
@@ -137,7 +137,49 @@ class GroundingDinoBaseTool(BaseTool):
             detected.append(
                 DetectionData(class_name=class_name, confidence=confidence, bbox=bbox)
             )
-        return detected
+        
+        # Filter out large detections (likely false positives)
+        filtered_detected = self._filter_large_detections(detected)
+        return filtered_detected
+
+    def _filter_large_detections(self, detections: list[DetectionData]) -> list[DetectionData]:
+        """Filter out detections that are too large (likely false positives)"""
+        if not detections:
+            return detections
+            
+        filtered = []
+        
+        # Calculate maximum allowed detection size (25% of image dimensions)
+        # We'll estimate image size from the largest detection
+        max_bbox_width = max(det.bbox.width for det in detections)
+        max_bbox_height = max(det.bbox.height for det in detections)
+        
+        # Estimate image size (assuming detections are reasonable size)
+        estimated_img_width = max_bbox_width * 4  # Rough estimate
+        estimated_img_height = max_bbox_height * 4  # Rough estimate
+        
+        max_width = estimated_img_width * 0.25
+        max_height = estimated_img_height * 0.25
+        
+        # Minimum size to avoid tiny detections
+        min_width = 20
+        min_height = 20
+        
+        for detection in detections:
+            width = detection.bbox.width
+            height = detection.bbox.height
+            
+            # Check if detection is within reasonable size limits
+            if (min_width <= width <= max_width and 
+                min_height <= height <= max_height):
+                filtered.append(detection)
+            else:
+                self.connector.node.get_logger().info(
+                    f"🚫 Filtered out {detection.class_name} (conf: {detection.confidence:.2f}): "
+                    f"{width:.1f}x{height:.1f} pixels (allowed: {min_width}-{max_width:.1f}x{min_height}-{max_height:.1f})"
+                )
+        
+        return filtered
 
 
 class GetDetectionTool(GroundingDinoBaseTool):

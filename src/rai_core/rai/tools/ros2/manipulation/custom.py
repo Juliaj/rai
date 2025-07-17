@@ -137,6 +137,7 @@ class MoveObjectFromToToolInput(BaseModel):
 
 
 class MoveObjectFromToTool(BaseROS2Tool):
+    print("Calling MoveObjectFromToTool")
     name: str = "move_object_from_to"
     description: str = (
         "Move an object from one point to another. "
@@ -170,12 +171,20 @@ class MoveObjectFromToTool(BaseROS2Tool):
         y1: float,
         z1: float,
     ) -> str:
+        logger = self.connector.node.get_logger()
+        logger.info(f"🤖 [MoveObjectFromToTool] Starting object movement")
+        logger.info(f"🤖 [MoveObjectFromToTool] From: ({x:.3f}, {y:.3f}, {z:.3f})")
+        logger.info(f"🤖 [MoveObjectFromToTool] To: ({x1:.3f}, {y1:.3f}, {z1:.3f})")
+        logger.info(f"🤖 [MoveObjectFromToTool] Calibration: x={self.calibration_x}, y={self.calibration_y}, z={self.calibration_z}")
+        
         # NOTE: create_client could be refactored into self.connector.service_call
         self.connector.service_call
         client = self.connector.node.create_client(
             ManipulatorMoveTo,
             "/manipulator_move_to",
         )
+        
+        # Create first pose (grab position)
         pose_stamped = PoseStamped()
         pose_stamped.header.frame_id = self.manipulator_frame
         pose_stamped.pose = Pose(
@@ -183,6 +192,7 @@ class MoveObjectFromToTool(BaseROS2Tool):
             orientation=self.quaternion,
         )
 
+        # Create second pose (drop position)
         pose_stamped1 = PoseStamped()
         pose_stamped1.header.frame_id = self.manipulator_frame
         pose_stamped1.pose = Pose(
@@ -190,67 +200,64 @@ class MoveObjectFromToTool(BaseROS2Tool):
             orientation=self.quaternion,
         )
 
+        # Apply calibration to first pose
         pose_stamped.pose.position.x += self.calibration_x
         pose_stamped.pose.position.y += self.calibration_y
         pose_stamped.pose.position.z += self.calibration_z
+        pose_stamped.pose.position.z = np.max([pose_stamped.pose.position.z, self.min_z])
 
-        pose_stamped.pose.position.z = np.max(
-            [pose_stamped.pose.position.z, self.min_z]
-        )
-
+        # Apply calibration to second pose
         pose_stamped1.pose.position.x += self.calibration_x
         pose_stamped1.pose.position.y += self.calibration_y
         pose_stamped1.pose.position.z += self.calibration_z
+        pose_stamped1.pose.position.z = np.max([pose_stamped1.pose.position.z, self.min_z])
 
-        pose_stamped1.pose.position.z = np.max(
-            [pose_stamped1.pose.position.z, self.min_z]
-        )
+        logger.info(f"🤖 [MoveObjectFromToTool] Calibrated grab pose: ({pose_stamped.pose.position.x:.3f}, {pose_stamped.pose.position.y:.3f}, {pose_stamped.pose.position.z:.3f})")
+        logger.info(f"🤖 [MoveObjectFromToTool] Calibrated drop pose: ({pose_stamped1.pose.position.x:.3f}, {pose_stamped1.pose.position.y:.3f}, {pose_stamped1.pose.position.z:.3f})")
 
+        # First movement: Move to grab position and close gripper
+        logger.info("🤖 [MoveObjectFromToTool] Step 1: Moving to grab position and closing gripper...")
         request = ManipulatorMoveTo.Request()
         request.target_pose = pose_stamped
-
         request.initial_gripper_state = True  # open
         request.final_gripper_state = False  # closed
 
         future = client.call_async(request)
-        self.connector.node.get_logger().debug(
-            f"Calling ManipulatorMoveTo service with request: x={request.target_pose.pose.position.x:.2f}, y={request.target_pose.pose.position.y:.2f}, z={request.target_pose.pose.position.z:.2f}"
-        )
-        response = get_future_result(future, timeout_sec=5.0)
+        logger.info(f"🤖 [MoveObjectFromToTool] Grab request sent: x={request.target_pose.pose.position.x:.3f}, y={request.target_pose.pose.position.y:.3f}, z={request.target_pose.pose.position.z:.3f}")
+        response = get_future_result(future, timeout_sec=20.0)
 
         if response is None:
-            return f"Service call failed for point ({x:.2f}, {y:.2f}, {z:.2f})."
+            logger.error("🤖 [MoveObjectFromToTool] Grab movement failed: No response")
+            return f"Service call failed for grab point ({x:.2f}, {y:.2f}, {z:.2f})."
 
         if response.success:
-            self.connector.logger.info(
-                f"End effector successfully positioned at coordinates ({x:.2f}, {y:.2f}, {z:.2f})."
-            )
+            logger.info(f"✅ [MoveObjectFromToTool] Grab movement successful")
         else:
-            self.connector.logger.error(
-                f"Failed to position end effector at coordinates ({x:.2f}, {y:.2f}, {z:.2f})."
-            )
-            return "Failed to position end effector at coordinates ({x:.2f}, {y:.2f}, {z:.2f})."
+            logger.error(f"❌ [MoveObjectFromToTool] Grab movement failed")
+            return "Failed to position end effector at grab coordinates ({x:.2f}, {y:.2f}, {z:.2f})."
 
+        # Second movement: Move to drop position and open gripper
+        logger.info("🤖 [MoveObjectFromToTool] Step 2: Moving to drop position and opening gripper...")
         request = ManipulatorMoveTo.Request()
         request.target_pose = pose_stamped1
-
         request.initial_gripper_state = False  # closed
         request.final_gripper_state = True  # open
 
         future = client.call_async(request)
-        self.connector.node.get_logger().debug(
-            f"Calling ManipulatorMoveTo service with request: x={request.target_pose.pose.position.x:.2f}, y={request.target_pose.pose.position.y:.2f}, z={request.target_pose.pose.position.z:.2f}"
-        )
-
+        logger.info(f"🤖 [MoveObjectFromToTool] Drop request sent: x={request.target_pose.pose.position.x:.3f}, y={request.target_pose.pose.position.y:.3f}, z={request.target_pose.pose.position.z:.3f}")
         response = get_future_result(future, timeout_sec=20.0)
 
         if response is None:
-            return f"Service call failed for point ({x:.2f}, {y:.2f}, {z:.2f})."
+            logger.error("🤖 [MoveObjectFromToTool] Drop movement failed: No response")
+            return f"Service call failed for drop point ({x1:.2f}, {y1:.2f}, {z1:.2f})."
 
         if response.success:
-            return f"End effector successfully positioned at coordinates ({x:.2f}, {y:.2f}, {z:.2f}). Note: The status of object interaction (grab/drop) is not confirmed by this movement."
+            logger.info(f"✅ [MoveObjectFromToTool] Drop movement successful")
+            logger.info(f"🎉 [MoveObjectFromToTool] Object movement completed successfully")
+            return f"End effector successfully moved object from ({x:.2f}, {y:.2f}, {z:.2f}) to ({x1:.2f}, {y1:.2f}, {z1:.2f}). Note: The status of object interaction (grab/drop) is not confirmed by this movement."
         else:
-            return f"Failed to position end effector at coordinates ({x:.2f}, {y:.2f}, {z:.2f})."
+            logger.error(f"❌ [MoveObjectFromToTool] Drop movement failed")
+            return f"Failed to position end effector at drop coordinates ({x1:.2f}, {y1:.2f}, {z1:.2f})."
 
 
 class GetObjectPositionsToolInput(BaseModel):
@@ -277,37 +284,73 @@ class GetObjectPositionsTool(BaseROS2Tool):
     args_schema: Type[GetObjectPositionsToolInput] = GetObjectPositionsToolInput
 
     @staticmethod
-    def format_pose(pose: Pose):
-        return f"Centroid(x={pose.position.x:.2f}, y={pose.position.y:2f}, z={pose.position.z:2f})"
+    def format_pose(pose):
+        # Handle both Pose (ROS2 geometry_msgs) and Pose2D objects
+        if hasattr(pose, 'position'):
+            # Standard ROS2 Pose with position attribute
+            return f"Centroid(x={pose.position.x:.2f}, y={pose.position.y:.2f}, z={pose.position.z:.2f})"
+        elif hasattr(pose, 'x') and hasattr(pose, 'y'):
+            # Pose2D-like object with direct x, y attributes
+            z_val = getattr(pose, 'z', 0.0)  # Default z to 0.0 if not present
+            return f"Centroid(x={pose.x:.2f}, y={pose.y:.2f}, z={z_val:.2f})"
+        else:
+            # Fallback for unknown pose types
+            return f"Centroid(pose_type={type(pose).__name__}, data={str(pose)})"
 
     def _run(self, object_name: str):
-        transform = self.connector.get_transform(
-            target_frame=self.target_frame, source_frame=self.source_frame
-        )
-
-        results = self.get_grabbing_point_tool._run(
-            camera_topic=self.camera_topic,
-            depth_topic=self.depth_topic,
-            camera_info_topic=self.camera_info_topic,
-            object_name=object_name,
-        )
-
-        poses = []
-        for result in results:
-            cam_pose = result[0]
-            poses.append(
-                Pose(position=Point(x=cam_pose[0], y=cam_pose[1], z=cam_pose[2]))
+        logger = self.connector.node.get_logger()
+        logger.info(f"🎯 [GetObjectPositionsTool] Starting for object: '{object_name}'")
+        
+        # Get coordinate transform
+        try:
+            transform = self.connector.get_transform(
+                target_frame=self.target_frame, source_frame=self.source_frame
             )
+        except Exception as e:
+            logger.error(f"❌ [GetObjectPositionsTool] Failed to get transform: {e}")
+            return f"Failed to get coordinate transform: {e}"
 
+        # Get grabbing points from vision
+        try:
+            results = self.get_grabbing_point_tool._run(
+                camera_topic=self.camera_topic,
+                depth_topic=self.depth_topic,
+                camera_info_topic=self.camera_info_topic,
+                object_name=object_name,
+            )
+        except Exception as e:
+            logger.error(f"❌ [GetObjectPositionsTool] GetGrabbingPointTool failed: {e}")
+            return f"Failed to get grabbing points: {e}"
+
+        # Convert to poses
+        poses = []
+        for i, result in enumerate(results):
+            try:
+                # result is a tuple (centroid, gripper_rotation) from GetGrabbingPointTool
+                centroid = result[0]  # centroid is a numpy array [x, y, z]
+                pose = Pose(position=Point(x=centroid[0], y=centroid[1], z=centroid[2]))
+                poses.append(pose)
+            except Exception as e:
+                logger.error(f"❌ [GetObjectPositionsTool] Failed to process result {i+1}: {e}")
+                continue
+
+        # Transform to manipulator frame
         mani_frame_poses = []
-        for pose in poses:
-            mani_frame_pose = do_transform_pose(pose, transform)
-            mani_frame_poses.append(mani_frame_pose)
+        for i, pose in enumerate(poses):
+            try:
+                mani_frame_pose = do_transform_pose(pose, transform)
+                mani_frame_poses.append(mani_frame_pose)
+            except Exception as e:
+                logger.error(f"❌ [GetObjectPositionsTool] Failed to transform pose {i+1}: {e}")
+                continue
 
         if len(mani_frame_poses) == 0:
+            logger.warning(f"⚠️ [GetObjectPositionsTool] No {object_name}s detected after processing")
             return f"No {object_name}s detected."
         else:
-            return f"Centroids of detected {object_name}s in {self.target_frame} frame: [{', '.join(map(self.format_pose, mani_frame_poses))}]. Sizes of the detected objects are unknown."
+            result_str = f"Centroids of detected {object_name}s in {self.target_frame} frame: [{', '.join(map(self.format_pose, mani_frame_poses))}]. Sizes of the detected objects are unknown."
+            logger.info(f"🎉 [GetObjectPositionsTool] Successfully detected {len(mani_frame_poses)} {object_name}(s)")
+            return result_str
 
 
 class ResetArmToolInput(BaseModel):

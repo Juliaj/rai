@@ -69,6 +69,8 @@ manipulation techniques.
 
     ```
     Enter a prompt: Pick up the red cube and drop it on another cube
+
+    Swap any two cubes
     ```
 
 !!! tip "Changing camera view"
