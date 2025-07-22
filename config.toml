@@ -11,21 +11,21 @@ region_name = "us-east-1"
 
 [openai]
 simple_model = "gpt-4o-mini"
-complex_model = "gpt-4o"
+complex_model = "gpt-4o-mini"
 embeddings_model = "text-embedding-ada-002"
 base_url = "https://api.openai.com/v1/"
 
 [ollama]
-simple_model = "llama3.2"
-complex_model = "llama3.1:70b"
-embeddings_model = "llama3.2"
 base_url = "http://localhost:11434"
+simple_model = "mistral-small3.2"
+complex_model = "mistral-small3.2"
+embeddings_model = "mistral-small3.2"
 
 [tracing]
 project = "rai"
 
 [tracing.langfuse]
-use_langfuse = false
+use_langfuse = true
 host = "http://localhost:3000"
 
 [tracing.langsmith]
@@ -33,8 +33,8 @@ use_langsmith = false
 host = "https://api.smith.langchain.com"
 
 [asr]
-recording_device_name = "default"
-transcription_model = "LocalWhisper"
+recording_device_name = "SteelSeries Arctis 5: USB Audio (hw:1,0)"
+transcription_model = "FasterWhisper"
 language = "en"
 vad_model = "SileroVAD"
 silence_grace_period = 0.3
@@ -46,6 +46,6 @@ wake_word_model_name = ""
 transcription_model_name = "tiny"
 
 [tts]
-vendor = "ElevenLabs"
+vendor = "KokoroTTS"
 voice = ""
-speaker_device_name = "default"
+speaker_device_name = "SteelSeries Arctis 5: USB Audio (hw:1,0)"
