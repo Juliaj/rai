@@ -216,6 +216,7 @@ def structured_output_node(
     """Analyze the conversation and return structured output."""
 
     analyzer = llm.with_structured_output(StepSuccess)
+    
     analysis = analyzer.invoke(
         [
             SystemMessage(
@@ -225,19 +226,19 @@ Analyze if this task was completed successfully:
 Task: {state["step"]}
 
 
-Determine success and provide brief explanation of what happened.
-Include the end result details in explanation.
-For example for the navigation tasks include the final location.
-For manipulation the coordinates of objects that have been detected, picked up from or dropped to.
+Determine success and provide brief explanation of what happened by slot, for example Slot 2: [NAVIGATED] Object status: UNKNOWN - NEEDS CHECKING. Mark a slot as COMPLETED only if object from this slot was dropped. 
 Below you have messages of agent doing the task:"""
             ),
             *state["step_messages"],
         ]
     )
+
     state["step_success"] = StepSuccess(
         success=analysis.success, explanation=analysis.explanation
     )
-    state["steps_done"].append(f"{state['step_success'].explanation}")
+
+    state["steps_done"].append(f"{state['step_success'].explanation}"
+    )
     return state
 
 
@@ -384,7 +385,7 @@ The single task should be delegated to only 1 agent and should be doable by only
         )
         if state["steps_done"]:
             megamind_prompt += "\n\n"
-            megamind_prompt += "Steps that were already done successfully:\n"
+            megamind_prompt += "Steps that were already done successfully. Once a slot is marked as COMPLETED, stop thinking about this slot.\n"
             steps_done = "\n".join(
                 [f"{i + 1}. {step}" for i, step in enumerate(state["steps_done"])]
             )

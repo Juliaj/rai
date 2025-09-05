@@ -48,6 +48,49 @@ ROBOT STARTING POSITION:
 SYSTEM_PROMPT = """You are a mobile robot operating in a warehouse environment for pick-and-place operations."""
 
 
+state_tracking_prompt = """
+
+CURRENT STATE:
+{state_json}
+
+GOAL: {goal_description}
+
+AVAILABLE ACTIONS:
+1. navigate_to(specialist="nav", target=[x,y], constraints="...")
+2. pick_up(specialist="manip", object="...", precondition_check=true)
+3. drop_object(specialist="manip", location="...", precondition_check=true)
+
+DECISION RULES:
+- Robot can only hold 1 item
+- Must be at location before manipulation
+- Check preconditions before acting
+
+OUTPUT FORMAT:
+{
+  "action": "action_name",
+  "parameters": {...},
+  "specialist": "nav|manip",
+  "expected_outcome": "description",
+  "updated_state": {updated_json}
+}
+
+"""
+
+state_json = {
+    "robot": {"pos": [4.0, 2.0], "holding": None},
+    "slots": {
+        "1": {"pos": [10.0, 1.5], "item": "wrench"},
+        "2": {"pos": [10.0, 3.0], "item": None},
+        "3": {"pos": [10.0, 4.5], "item": "bolt"},
+        "4": {"pos": [10.0, 6.0], "item": None},
+    },
+    "boxes": {
+        "1": {"pos": [3.0, 5.0], "items": []},
+        "2": {"pos": [5.0, 5.0], "items": ["screw"]},
+    },
+}
+
+
 class EnvStateManager:
     """Enhanced env state manager that tracks objects, boxes, and robot state"""
 
@@ -65,35 +108,39 @@ class EnvStateManager:
                 # when dropped the object will appear with different values
                 "picked_up": False,
                 "relative": (0.02, 0.1, 0.05),  # relative to robot when at slot
+                "slot_id": 1,
             },
             "obj_2": {
                 "world_position": (10.5, 3.0),  # Slot 2
                 "color": "red",
                 "picked_up": False,
                 "relative": (-0.2, 0.05, 0.05),
+                "slot_id": 2,
             },
             "obj_3": {
                 "world_position": (10.5, 4.5),  # Slot 3
                 "color": "green",
                 "picked_up": False,
                 "relative": (0.1, 0.4, 0.05),
+                "slot_id": 3,
             },
             "obj_4": {
                 "world_position": (10.5, 6.0),  # Slot 4
                 "color": "green",
                 "picked_up": False,
                 "relative": (0.15, -0.25, 0.05),
+                "slot_id": 4,
             },
         }
 
         self._boxes = {
             "box_1": {
-                "world_position": (3.0, 5.5),
+                "world_position": (3.0, 5.0),
                 "objects": [],  # List of objects in this box
                 "relative": (0.2, 0, 0.05),  # relative when robot is at box
             },
             "box_2": {
-                "world_position": (5.0, 5.5),
+                "world_position": (5.0, 5.0),
                 "objects": [],
                 "relative": (0.1, -0.05, 0.05),
             },
@@ -133,6 +180,13 @@ class EnvStateManager:
         """Drop held object at relative position from current robot location"""
         # Check if placed in box, if yes, change env state
         robot_x, robot_y = self.get_position()
+        obj_id = self._state["held_object"]
+        obj_slot_id = self._objects[obj_id]["slot_id"]
+        print(
+            f" Dropping {obj_id} from slot {obj_slot_id} at relative position {relative_pos}"
+        )
+        box_id_found = None
+
         # Find which box we're dropping into
         for box_id, box_data in self._boxes.items():
             if relative_pos == box_data["relative"]:
@@ -144,14 +198,20 @@ class EnvStateManager:
                     # Drop object into box
                     obj_id = self._state["held_object"]
                     box_data["objects"].append(obj_id)
+                    print(f"   Dropped object {obj_id} into box {box_id}")
+                    box_id_found = box_id
 
                     # Update object position to be in the box
                     self._objects[obj_id]["world_position"] = (
                         box_data["world_position"][0] + relative_pos[0],
                         box_data["world_position"][1] + relative_pos[1],
                     )
-
+        # TODO: this is wierd, we reset the held object to none regardless whether the object was dropped into the box or not
         self._state["held_object"] = None
+        print(
+            f" pretending that we dropped the object {obj_id} slot {obj_slot_id} into box {box_id_found}"
+        )
+        return obj_id, obj_slot_id, box_id_found
 
     def get_visible_objects_at_position(self) -> List[Dict]:
         """Get objects visible at current robot position"""
@@ -171,6 +231,7 @@ class EnvStateManager:
                                 "id": obj_id,
                                 "color": obj_data["color"],
                                 "relative_position": obj_data["relative"],
+                                "slot_id": obj_data["slot_id"],
                             }
                         )
 
@@ -391,8 +452,10 @@ class SortTask(Task):
             if not held_obj:
                 return "Failed to drop - you are not holding any object."
             else:
-                self.env_state.drop_object_at_position((x, y, z))
-                return f"Successfully dropped object ({held_obj}) at relative position x: {x}, y: {y}, z: {z}"
+                obj_id, obj_slot_id, box_id_found = (
+                    self.env_state.drop_object_at_position((x, y, z))
+                )
+                return f"Successfully dropped object ({obj_id}) {obj_slot_id} at relative position x: {x}, y: {y}, z: {z}, box: {box_id_found}, work for slot {obj_slot_id} is done."
 
         @tool
         def ask_vlm() -> str:
@@ -461,9 +524,9 @@ class SortTask(Task):
 
     def get_base_prompt(self) -> str:
         return (
-            "Sort blue and green objects from slots to separate boxes on the rack. "
+            "Sort blue and green objects from slots to separate boxes on the rack. Leave other objects in the slots. "
             "Blue objects should go to the 1st box (x: 3.0, y: 5.0), green objects should go to the second box (x: 5.0, y: 5.0). "
-            "Check the slots in order. If you checked all of them and sorted all blue and green objects the task is done."
+            "Checking the slots in order. If you checked all of them and sorted all blue and green objects the task is done. "
         )
 
     def get_prompt(self) -> str:
