@@ -56,7 +56,7 @@ class State(MessagesState):
     # messages from the user ?
     messages: List[BaseMessage]
     # executor context for execution conversation
-    executor_messages: List[BaseMessage]
+    step_messages: List[BaseMessage]
 
 
 def llm_node(
@@ -65,7 +65,7 @@ def llm_node(
     state: State,
 ) -> State:
     """Process messages using the LLM - returns the agent's response."""
-    messages = state["executor_messages"].copy()
+    messages = state["step_messages"].copy()
     if not state["step"]:
         raise ValueError("Step should be defined at this point")
     if system_prompt:
@@ -76,12 +76,12 @@ def llm_node(
     ai_msg = llm.invoke(messages)
 
     # Only update executor context - don't pollute megamind context
-    state["executor_messages"].append(ai_msg)
+    state["step_messages"].append(ai_msg)
     state["messages"].append(ai_msg)
     return state
 
 # structured output node analyze the outcome of a step. 
-# It takes in the executor_messages and calls llm to generate a structured output - analysis of the step
+# It takes in the step_messages and calls llm to generate a structured output - analysis of the step
 # then it updates the state (step_success, steps_done) with the analysis
 def structured_output_node(
     llm: BaseChatModel,
@@ -104,7 +104,7 @@ Task: {state["step"]}
 
 Below you have messages of agent doing the task:"""
             ),
-            *state["executor_messages"],
+            *state["step_messages"],
         ]
     )
 
@@ -121,7 +121,7 @@ Below you have messages of agent doing the task:"""
 # used by megamind agent to decide whether to continue with tools or return structured output
 def should_continue_or_structure(state: State) -> str:
     """Decide whether to continue with tools or return structured output."""
-    last_message = state["executor_messages"][-1]
+    last_message = state["step_messages"][-1]
 
     # If AI message has tool calls, continue to tools
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
@@ -190,7 +190,7 @@ Determine success and provide brief explanation of the task completion.""",
             return Command(
                 goto=agent_name,
                 # Send only the task message to the specialist agent, not the full history
-                update={"step": task_instruction, "executor_messages": []},
+                update={"step": task_instruction, "step_messages": []},
                 graph=Command.PARENT,
             )
 
