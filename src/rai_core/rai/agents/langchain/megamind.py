@@ -67,14 +67,20 @@ class StepSuccess(BaseModel):
 
 
 class State(MessagesState):
+    """State of the megamind agent"""
     original_task: str
+    # steps done by the executor agent, the results of the steps
     steps_done: List[str]
     step: Optional[str]
     step_success: StepSuccess
-    step_messages: List[BaseMessage]
+    # messages from the user ?
+    messages: List[BaseMessage]
+    # executor context for execution conversation
+    executor_messages: List[BaseMessage]
 
 
 class ToolRunner(RunnableCallable):
+    """Tool runner for the executor agent"""
     def __init__(
         self,
         tools: Sequence[Union[BaseTool, Callable]],
@@ -91,10 +97,12 @@ class ToolRunner(RunnableCallable):
                 tool_ = create_tool(tool_)
             self.tools_by_name[tool_.name] = tool_
 
+
     def _func(self, input: dict[str, Any], config: RunnableConfig) -> Any:
         config["max_concurrency"] = 1
-        if messages := input.get("step_messages", []):
+        if messages := input.get("executor_messages", []):
             message = messages[-1]
+            # print(f"**Message for tool runner: {message}")
         else:
             raise ValueError("No message found in input")
 
@@ -107,7 +115,9 @@ class ToolRunner(RunnableCallable):
 
             try:
                 ts = time.perf_counter()
+                # print(f"** Running tool: {call['name']}, args: {call['args']}")
                 output = self.tools_by_name[call["name"]].invoke(call, config)  # type: ignore
+                
                 te = time.perf_counter() - ts
                 self.logger.info(
                     f"Tool {call['name']} completed in {te:.2f} seconds. Tool output: {str(output.content)[:100]}{'...' if len(str(output.content)) > 100 else ''}"
@@ -184,39 +194,46 @@ class ToolRunner(RunnableCallable):
             # we sort the messages by type so that the tool messages are sent first
             # for more information see implementation of ToolMultimodalMessage.postprocess
             outputs.sort(key=lambda x: x.__class__.__name__, reverse=True)
+
             input["messages"].extend(outputs)
-            input["step_messages"].extend(outputs)
+            input["executor_messages"].extend(outputs)
             return input
 
-
+# llm node extract and build context, invoke llm, then update state with the LLM response
+# It updates state (executor_messages) with the LLM response
 def llm_node(
     llm: BaseChatModel,
     system_prompt: Optional[str],
     state: State,
 ) -> State:
     """Process messages using the LLM - returns the agent's response."""
-    messages = state["step_messages"].copy()
+    messages = state["executor_messages"].copy()
     if not state["step"]:
         raise ValueError("Step should be defined at this point")
     if system_prompt:
         messages.insert(0, HumanMessage(state["step"]))
         messages.insert(0, SystemMessage(content=system_prompt))
-
+    
+    # context: messages, system_prompt, step
     ai_msg = llm.invoke(messages)
-    # append to both
-    state["step_messages"].append(ai_msg)
+
+    # Only update executor context - don't pollute megamind context
+    state["executor_messages"].append(ai_msg)
     state["messages"].append(ai_msg)
     return state
 
-
+# structured output node analyze the outcome of a step. 
+# It takes in the executor_messages and calls llm to generate a structured output - analysis of the step
+# then it updates the state (step_success, steps_done) with the analysis
 def structured_output_node(
     llm: BaseChatModel,
+    task_planning_prompt: str,
     state: State,
 ) -> State:
-    """Analyze the conversation and return structured output."""
+    """Analyze the conversation and return structured output including the status of the task."""
 
     analyzer = llm.with_structured_output(StepSuccess)
-    
+
     analysis = analyzer.invoke(
         [
             SystemMessage(
@@ -225,11 +242,11 @@ Analyze if this task was completed successfully:
 
 Task: {state["step"]}
 
+{task_planning_prompt}
 
-Determine success and provide brief explanation of what happened by slot, for example Slot 2: [NAVIGATED] Object status: UNKNOWN - NEEDS CHECKING. Mark a slot as COMPLETED only if object from this slot was dropped. 
 Below you have messages of agent doing the task:"""
             ),
-            *state["step_messages"],
+            *state["executor_messages"],
         ]
     )
 
@@ -237,14 +254,16 @@ Below you have messages of agent doing the task:"""
         success=analysis.success, explanation=analysis.explanation
     )
 
-    state["steps_done"].append(f"{state['step_success'].explanation}"
-    )
+    state["steps_done"].append(f"{state['step_success'].explanation}")
     return state
 
-
+# conditional edge to decide whether to continue with tools or return structured output
+# if the last message has tool calls, continue to tools
+# otherwise, return structured output
+# used by megamind agent to decide whether to continue with tools or return structured output
 def should_continue_or_structure(state: State) -> str:
     """Decide whether to continue with tools or return structured output."""
-    last_message = state["step_messages"][-1]
+    last_message = state["executor_messages"][-1]
 
     # If AI message has tool calls, continue to tools
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
@@ -253,11 +272,13 @@ def should_continue_or_structure(state: State) -> str:
     # Otherwise, return structured output
     return "structured_output"
 
-
+# executor workflow
 def create_react_structured_agent(
     llm: BaseChatModel,
     tools: Optional[List[BaseTool]] = None,
     system_prompt: Optional[str] = None,
+    task_planning_prompt: str = f"""
+Determine success and provide brief explanation of the task completion.""",
 ) -> CompiledStateGraph:
     """Create a react agent that returns structured output."""
 
@@ -268,10 +289,11 @@ def create_react_structured_agent(
         tool_runner = ToolRunner(tools)
         graph.add_node("tools", tool_runner)
 
+        # bind tools to the llm
         bound_llm = llm.bind_tools(tools)
         graph.add_node("llm", partial(llm_node, bound_llm, system_prompt))
 
-        graph.add_node("structured_output", partial(structured_output_node, llm))
+        graph.add_node("structured_output", partial(structured_output_node, llm, task_planning_prompt))
 
         graph.add_conditional_edges(
             "llm",
@@ -282,7 +304,7 @@ def create_react_structured_agent(
         graph.add_edge("structured_output", END)
     else:
         graph.add_node("llm", partial(llm_node, llm, system_prompt))
-        graph.add_node("structured_output", partial(structured_output_node, llm))
+        graph.add_node("structured_output", partial(structured_output_node, llm, task_planning_prompt))
         graph.add_edge("llm", "structured_output")
         graph.add_edge("structured_output", END)
 
@@ -291,13 +313,12 @@ def create_react_structured_agent(
 
 def create_megamind(
     manipulation_tools: List[BaseTool],
-    navigation_tools: List[BaseTool],
     megamind_llm: BaseChatModel,
     executor_llm: BaseChatModel,
     system_prompt: str,
+    task_planning_prompt: str = f"""
+Determine success and provide brief explanation of the task completion.""",
 ) -> CompiledStateGraph:
-    if not manipulation_tools and not navigation_tools:
-        raise ValueError("At least one set of tools must be provided")
 
     def create_handoff_tool(*, agent_name: str, description: str | None = None):
         name = f"transfer_to_{agent_name}"
@@ -311,66 +332,55 @@ def create_megamind(
             return Command(
                 goto=agent_name,
                 # Send only the task message to the specialist agent, not the full history
-                update={"step": task_instruction, "step_messages": []},
+                update={"step": task_instruction, "executor_messages": []},
                 graph=Command.PARENT,
             )
 
         return handoff_tool
 
-    manipulation_system_prompt = """You are a manipulation specialist robot agent.
-Your role is to handle object manipulation tasks including picking up and droping objects using provided tools.
 
-Ask the VLM for objects detection and positions before perfomring any manipulation action.
-If VLM doesn't see objects that are objectives of the task, return this information, without proceeding"""
+    executor_system_prompt = """You are a specialist robot agent with access to manipulation and navigation tools.
+You can handle navigation tasks in space using provided tools.
 
-    navigation_system_prompt = """You are a navigation specialist robot agent.
-Your role is to handle navigation tasks in space using provided tools.
+After performing navigation action, always check your current position to ensure success
 
-After performing navigation action, always check your current position to ensure success"""
+You can also handle object manipulation tasks including picking up and droping objects using provided tools.
+
+Ask the VLM for objects detection and positions before performing any manipulation action.
+If VLM doesn't see objects that are objectives of the task, return this information, without proceeding
+
+
+"""
 
     # Create specialist agents
-    manipulation_agent = create_react_structured_agent(
+    executor_agent = create_react_structured_agent(
         llm=executor_llm,
-        system_prompt=manipulation_system_prompt,
+        system_prompt=executor_system_prompt,
         tools=manipulation_tools,
+        task_planning_prompt=task_planning_prompt,
     )
 
-    navigation_agent = create_react_structured_agent(
-        llm=executor_llm,
-        system_prompt=navigation_system_prompt,
-        tools=navigation_tools,
-    )
-    # Handoffs
-    assign_to_nav_agent = create_handoff_tool(
-        agent_name="navigation",
-        description="Assign task to a navigation agent.",
+    assign_to_executor_agent = create_handoff_tool(
+        agent_name="executor",
+        description="Assign task to a executor agent.",
     )
 
-    assign_to_manipulation_agent = create_handoff_tool(
-        agent_name="manipulation",
-        description="Assign task to a manipulation agent.",
-    )
+    megamind_system_prompt = """You analyze the given long tasks and make a plan to pass it to specialists to whom you will delegate tasks. 
+    You also monitor the specialists and provide feedback to them."""
 
-    megamind_system_prompt = """You manage specialists to whom you will delegate tasks:
-- Navigation specialist can navigate to certain coordinates and determine the location of robot in the environment.
-Always include coordinates to navigate to.
-- Manipulaiton specialist can ask VLM about the nearby objects and their coordinates, pick up and drop objects.
-Pick and drop operations depend on relative cooridnates so don't include global cooridantes. Make sure that robot
-is in the right place to perform the task. For example to drop object at box2, robot should be at box2 in the first place.
-After picking any object, you will be holding it until dropped. Remember to first drop object before you pick up another.
-
-The single task should be delegated to only 1 agent and should be doable by only 1 agent.
-"""
     system_prompt += "\n"
     system_prompt += megamind_system_prompt
 
+    # create a langchain reactive agent
     megamind_agent = create_react_agent(
         megamind_llm,
-        tools=[assign_to_manipulation_agent, assign_to_nav_agent],
+        tools=[assign_to_executor_agent],
         prompt=system_prompt,
         name="megamind",
     )
 
+    # megamind action: plan the next step and delegate it to the executor agent
+    # populate the original task and init step and step_done for State
     def plan_step(state: State) -> State:
         """Initial planning step."""
         if "original_task" not in state:
@@ -419,12 +429,10 @@ The single task should be delegated to only 1 agent and should be doable by only
     megamind = (
         StateGraph(State)
         .add_node("megamind", plan_step)
-        .add_node("navigation", navigation_agent)
-        .add_node("manipulation", manipulation_agent)
+        .add_node("executor", executor_agent)
         .add_edge(START, "megamind")
         # always return back to the supervisor
-        .add_edge("navigation", "megamind")
-        .add_edge("manipulation", "megamind")
+        .add_edge("executor", "megamind")
         .compile()
     )
 

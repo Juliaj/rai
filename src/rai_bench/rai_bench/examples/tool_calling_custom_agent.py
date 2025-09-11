@@ -27,6 +27,8 @@ from rai_bench.tool_calling_agent.interfaces import TaskArgs
 from rai_bench.tool_calling_agent.tasks.warehouse import SortTask
 from rai_bench.utils import get_llm_for_benchmark
 
+MODEL_NAME = "qwen3:8b"
+
 if __name__ == "__main__":
     now = datetime.now()
     out_dir = f"src/rai_bench/rai_bench/experiments/tool_calling/{now.strftime('%Y-%m-%d_%H-%M-%S')}"
@@ -37,13 +39,22 @@ if __name__ == "__main__":
     task = SortTask(task_args=TaskArgs(extra_tool_calls=50))
     task.set_logger(bench_logger)
 
-    supervisor_name = "qwen3:8b"
+    if MODEL_NAME == "qwen3:8b":
+        supervisor_name = MODEL_NAME
+        executor_name = MODEL_NAME
+        vendor = "ollama"
+    elif MODEL_NAME == "gpt-4o-mini" or MODEL_NAME == "gpt-4o":
+        supervisor_name = MODEL_NAME
+        executor_name = MODEL_NAME
+        vendor = "openai"
+    else:
+        raise ValueError(f"Model {MODEL_NAME} not supported")
 
-    executor_name = "qwen3:8b"
+
     model_name = f"supervisor-{supervisor_name}_executor-{executor_name}"
-    supervisor_llm = get_llm_for_benchmark(model_name=supervisor_name, vendor="ollama")
+    supervisor_llm = get_llm_for_benchmark(model_name=supervisor_name, vendor=vendor)
     executor_llm = get_llm_for_benchmark(
-        model_name=executor_name, vendor="ollama", reasoning=False
+        model_name=executor_name, vendor=vendor
     )
 
     benchmark = ToolCallingAgentBenchmark(
@@ -55,10 +66,10 @@ if __name__ == "__main__":
 
     agent = create_megamind(
         manipulation_tools=task.manipulation_tools(),
-        navigation_tools=task.navigation_tools(),
         megamind_llm=supervisor_llm,
         executor_llm=executor_llm,
         system_prompt=task.get_system_prompt(),
+        task_planning_prompt=task.get_planning_prompt(),
     )
     initial_state = State(
         {
@@ -74,6 +85,9 @@ if __name__ == "__main__":
     benchmark.run_next(
         agent=agent, initial_state=initial_state, experiment_id=experiment_id
     )
+
+    if hasattr(task, 'report_sorting_status'):
+        task.report_sorting_status()
 
     bench_logger.info("===============================================================")
     bench_logger.info("ALL SCENARIOS DONE. BENCHMARK COMPLETED!")
