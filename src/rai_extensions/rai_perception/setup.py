@@ -15,17 +15,23 @@
 
 import os
 from glob import glob
+from pathlib import Path
 
 from setuptools import find_packages, setup
 
 package_name = "rai_perception"
 
+# Read long description safely
+here = Path(__file__).parent.resolve()
+readme_path = here / "README.md"
+long_description = readme_path.read_text(encoding="utf-8") if readme_path.exists() else ""
+
 setup(
-    name=package_name,
-    version="0.1.0",
+    name="rai-perception",
+    version="0.1.1",
     packages=find_packages(exclude=["test"]),
     include_package_data=True,
-    package_data={"": ["seg_config.yml"]},
+    package_data={"rai_perception": ["configs/seg_config.yml"]},
     data_files=[
         ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
         ("share/" + package_name, ["package.xml"]),
@@ -34,13 +40,26 @@ setup(
             glob(os.path.join("launch", "*launch.[pxy][yma]*")),
         ),
     ],
-    install_requires=["setuptools"],
+    install_requires=[
+        "setuptools",
+        "torch>=2.3.1",
+        "torchvision>=0.18.1",
+        "rf-groundingdino>=0.2.0",
+        "rai-sam2>=1.1.2",
+        "rai_core>=2.0.0a2,<3.0.0",
+    ],
     zip_safe=True,
     maintainer="Kajetan Rachwał",
     maintainer_email="kajetan.rachwal@robotec.ai",
-    description="Package enabling open set vision for RAI",
-    license="Apache License 2.0",
+    description="Package for object detection, segmentation and gripping point detection",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    license="Apache-2.0",
     tests_require=["pytest"],
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: Apache Software License",
+    ],
     entry_points={
         "console_scripts": [
             "talker = rai_perception.examples.talker:main",

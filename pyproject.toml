@@ -20,7 +20,8 @@ pre-commit = "^3.7.0"
 tabulate = "^0.9.0"
 pytest = "^8.2.0"
 pytest-timeout = "^2.3.1"
-
+build = "^1.2.1"
+twine = "^6.2.0"
 
 [tool.poetry.group.docs]
 optional = true
@@ -59,7 +60,7 @@ optional = true
 [tool.poetry.group.perception.dependencies]
 rai_perception = {path = "src/rai_extensions/rai_perception", develop = true}
 
-# TODO(juliaj): for testing purpose only, remove once rai-grounded-sam2 is published.
+# TODO(juliaj): for testing purpose only, remove once rai-sam2 is published.
 [[tool.poetry.source]]
 name = "test-pypi"
 url = "https://test.pypi.org/simple/"
@@ -74,7 +75,8 @@ build-backend = "poetry.core.masonry.api"
 markers = [
     "billable: marks test as billable  (deselect with '-m \"not billable\"')",
     "ci_only: marks test as cli only (deselect with '-m \"not ci_only\"')",
+    "manual: marks test as manual (deselect with '-m \"not manual\"')",
 ]
-addopts = "-m 'not billable and not ci_only' --ignore=src"
+addopts = "-m 'not billable and not ci_only and not manual' --ignore=src"
 log_cli = true
 log_cli_level = "INFO"
