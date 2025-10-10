@@ -43,7 +43,7 @@ There are two ways to start using RAI:
 
 !!! important "Package availability"
 
-    `rai_nomad` is not yet available through pip. If your workflow relies on NoMaD integration, please refer to the
+    `rai_perception` and `rai_nomad` are not yet available through pip. If your workflow relies on openset detection or NoMaD integration, please refer to the
     [developer environment instructions](#setting-up-developer-environment) setup.
 
     `rai_interfaces` is available as `apt` package. However, due to package distribution delays, the latest version may not be immediately available. If you encounter missing imports, please build `rai_interfaces` from [source](https://github.com/RobotecAI/rai_interfaces).
@@ -109,7 +109,7 @@ rosdep install --from-paths src --ignore-src -r -y
 !!! tip "Additional dependencies"
 
     RAI is modular. If you want to use features such as
-    speech-to-speech, simulation and benchmarking suite, object detection and segamentation, or NoMaD integration,
+    speech-to-speech, simulation and benchmarking suite, openset detection, or NoMaD integration,
     install additional dependencies:
 
     ```bash

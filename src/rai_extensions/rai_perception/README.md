@@ -7,7 +7,7 @@ It allows for open-set detection.
 
 ## Installation
 
-In your workspace you need to have an `src` folder containing this package `rai_open_set_vision` and the `rai_interfaces` package.
+In your workspace you need to have an `src` folder containing this package `rai_perception` and the `rai_interfaces` package.
 
 ### Preparing the GroundingDINO
 
