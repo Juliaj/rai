@@ -1,95 +1,73 @@
 <!--- --8<-- [start:sec1] -->
 
-# RAI Perception
+# RAI Open Set Vision
 
-## Overview
-
-**RAI Perception** is a ROS2 package that integrates GroundingDINO and Segment Anything models for open-set object detection and segmentation. It provides:
-
-- **Agents**: `GroundingDinoAgent` and `GroundedSamAgent` exposed as ROS2 services
-- **Tools for LLM agents**: 
-  - `GetDetectionTool` - detects objects from camera topics
-  - `GetDistanceToObjectsTool` - estimates distance to detected objects using depth data
-  - `GetSegmentationTool` and `GetGrabbingPointTool` for manipulation tasks
-
+This package provides a ROS2 Node which is an interface to the [Idea-Research GroundingDINO Model](https://github.com/IDEA-Research/GroundingDINO).
+It allows for open-set detection.
 
 ## Installation
 
-The `rai-perception` package can be installed directly via pip:
+In your workspace you need to have an `src` folder containing this package `rai_open_set_vision` and the `rai_interfaces` package.
 
-```bash
-pip install rai-perception
+### Preparing the GroundingDINO
+
+Add required ROS dependencies:
+
 ```
-
-## Development Setup
-
-To develop or contribute to `rai_perception`, follow these steps to set up your workspace:
-
-### Prerequisites
-
-Ensure your ROS2 workspace has an `src` folder containing both the `rai_perception` and `rai_interfaces` packages.
-
-### Install Dependencies
-
-Install required ROS2 dependencies:
-
-```bash
 rosdep install --from-paths src --ignore-src -r
 ```
 
-In the base directory of your RAI workspace, install Python dependencies:
+## Build and run
 
-```bash
+In the base directory of the `RAI` package install dependencies:
+
+```
 poetry install --with perception
 ```
 
-### Build the Package
+Source the ros installation
 
-Source your ROS2 installation:
-
-```bash
+```
 source /opt/ros/${ROS_DISTRO}/setup.bash
 ```
 
-Build the workspace:
+Run the build process:
 
-```bash
+```
 colcon build --symlink-install
 ```
 
-Source the workspace environment:
+Source the environment
 
-```bash
+```
 source setup_shell.sh
 ```
 
-### Run the Agents
+Run the `GroundedSamAgent` and `GroundingDinoAgent` agents.
 
-Launch the `GroundedSamAgent` and `GroundingDinoAgent`, change the directory path based on your setup.
-
-```bash
-python rai_perception/scripts/run_perception_agents.py
+```
+python run_vision_agents.py
 ```
 
 <!--- --8<-- [end:sec1] -->
 
-This script creates two ROS 2 Nodes: `grounding_dino` and `grounded_sam` using [ROS2Connector](../../../docs/API_documentation/connectors/ROS_2_Connectors.md).
-The services exposed by agents can be triggered as regular ROS2 services:
+Agents create two ROS 2 Nodes: `grounding_dino` and `grounded_sam` using [ROS2Connector](../../../docs/API_documentation/connectors/ROS_2_Connectors.md).
+These agents can be triggered by ROS2 services:
 
 -   `grounding_dino_classify`: `rai_interfaces/srv/RAIGroundingDino`
 -   `grounded_sam_segment`: `rai_interfaces/srv/RAIGroundedSam`
 
 > [!TIP]
 >
-> If you wish to start rai_perception agents as part of ros2 launch, an example launch
+> If you wish to integrate open-set vision into your ros2 launch file, a premade launch
 > file can be found in `rai/src/rai_bringup/launch/openset.launch.py`
 
 > [!NOTE]
-> The model weights will be downloaded to `~/.cache/rai/vision/` directory.
+> The weights will be downloaded to `~/.cache/rai` directory.
 
 ## RAI Tools
 
-`rai_perception` package contains tools that can be used by [RAI LLM agents](../../../docs/tutorials/walkthrough.md)
+`rai_open_set_vision` package contains tools that can be used by [RAI LLM agents](../../../docs/tutorials/walkthrough.md)
 enhance their perception capabilities. For more information on RAI Tools see
 [Tool use and development](../../../docs/tutorials/tools.md) tutorial.
 
@@ -97,7 +75,7 @@ enhance their perception capabilities. For more information on RAI Tools see
 
 ### `GetDetectionTool`
 
-This tool calls the grounding dino service to use the model to see if the message from the provided camera topic contains objects from a comma separated prompt. A tool for detecting specified objects using a ros2 action. The tool call might take some time to execute and is blocking - you will not be able to check their feedback, only will be informed about the result. 
+This tool calls the grounding dino service to use the model to see if the message from the provided camera topic contains objects from a comma separated prompt.
 
 <!--- --8<-- [end:sec3] -->
 
@@ -111,7 +89,7 @@ This tool calls the grounding dino service to use the model to see if the messag
 **Example call**
 
 ```python
-from rai_perception.tools import GetDetectionTool
+from rai_open_set_vision.tools import GetDetectionTool
 from rai.communication.ros2 import ROS2Connector, ROS2Context
 
 with ROS2Context():
@@ -130,13 +108,12 @@ I have detected the following items in the picture - chair, human
 
 ### `GetDistanceToObjectsTool`
 
-This tool calls the grounding dino service to use the model to see if the message from the provided camera topic contains objects from a comma separated prompt. Then it utilises messages from depth camera to create an estimation of distance to a detected object. A tool for calculating distance to specified objects using a ros2 action. The tool call might take some time to execute and is blocking - you will not be able to check their feedback, only will be informed about the result."
-
+This tool calls the grounding dino service to use the model to see if the message from the provided camera topic contains objects from a comma separated prompt. Then it utilises messages from depth camera to create an estimation of distance to a detected object.
 
 **Example call**
 
 ```python
-from rai_perception.tools import GetDetectionTool
+from rai_open_set_vision.tools import GetDetectionTool
 from rai.communication.ros2 import ROS2Connector, ROS2Context
 
 with ROS2Context():
@@ -156,26 +133,18 @@ with ROS2Context():
 I have detected the following items in the picture human: 3.77m away
 ```
 
+## Simple ROS2 Client Node Example
 
-## Interact with agents with a simple ROS2 client
+An example client is provided with the package as `rai_open_set_vision/talker.py`
 
-You can also use a simple ROS provided with the package as `rai_perception/talker.py` to interact with the agents. Following are the steps to run this client.  
-
-First, make sure the ROS2 packages in your workspace are built and sourced. Then run following from one terminal, adjust the directory path based on your setup
-
-```
-python src/rai_extensions/rai_perception/scripts/run_perception_agents.py
+You can see it working by running:
 
 ```
-Finally run following in another termainal:
-
-```
-ros2 run rai_perception talker --ros-args -p image_path:=src/rai_extensions/rai_perception/images/sample.jpg
+python run_vision_agents.py
+cd rai # rai repo BASE directory
+ros2 run rai_open_set_vision talker --ros-args -p image_path:=src/rai_extensions/rai_open_set_vision/images/sample.jpg
 ```
 
 If everything was set up properly you should see a couple of detections with classes `dinosaur`, `dragon`, and `lizard`.
 
 <!--- --8<-- [end:sec4] -->
-
-
-
