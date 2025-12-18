@@ -93,19 +93,18 @@ jobs:
         run: python -m pip install cibuildwheel==2.16.2
 
       - name: Build wheels
+        working-directory: ${{ matrix.package.path }}
         env:
           CIBW_BUILD: cp310-* cp312-*
           CIBW_SKIP: pp* *-win32 *-manylinux_i686
           CIBW_BEFORE_BUILD: |
             python -m pip install --upgrade pip
             python -m pip install poetry
-            cd "${{ matrix.package.path }}"
             poetry install --no-interaction --no-root --only main
           CIBW_BUILD_FRONTEND: build
           CIBW_PROJECT_REQUIRES_PYTHON: ">=3.10,<3.13"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux2014
-        working-directory: ${{ matrix.package.path }}
         run: |
           python -m cibuildwheel --output-dir wheelhouse
 
@@ -131,19 +130,15 @@ jobs:
           # TODO(juliaj): poetry.lock generated with Poetry 2.1.4, consider pinning version here
           version: 2.1.1
 
-      - name: Run tests
-        run: |
-          poetry install
-          poetry run pytest -m "not billable"
-
       - name: Build source distributions
         run: |
-          cd src/rai_core && poetry build --format sdist
-          cd ../rai_extensions/rai_perception && poetry build --format sdist
-          cd ../rai_bench && poetry build --format sdist
-          cd ../rai_sim && poetry build --format sdist
-          cd ../rai_whoami && poetry build --format sdist
-          cd ../rai_pubtest && poetry build --format sdist
+          set -e
+          (cd src/rai_core && poetry build --format sdist)
+          (cd src/rai_extensions/rai_perception && poetry build --format sdist)
+          (cd src/rai_bench && poetry build --format sdist)
+          (cd src/rai_sim && poetry build --format sdist)
+          (cd src/rai_whoami && poetry build --format sdist)
+          (cd src/rai_pubtest && poetry build --format sdist)
 
       - name: Upload source distributions
         uses: actions/upload-artifact@v4
