@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "rai-pubtest"
+version = "0.0.1"
+description = "Minimal test package for validating PyPI publishing workflow"
+authors = ["Julia Jia"]
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: Apache Software License",
+]
+packages = [
+    { include = "rai_pubtest", from = "." },
+]
+
+[tool.poetry.dependencies]
+python = "^3.10, <3.13"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+

@@ -20,7 +20,7 @@ jobs:
     name: Require version bumps for changed packages
     # The version bump check relies on PR base/head SHAs. For workflow_dispatch
     # there is no PR context, so we skip this check.
-    if: github.event.label.name == 'publish-testpypi'
+    if: github.event.label.name == 'publish-pypi'
     runs-on: ubuntu-latest
 
     steps:
@@ -41,7 +41,7 @@ jobs:
 
   build_wheels:
     name: Build wheels
-    if: github.event.label.name == 'publish-testpypi' || github.event_name == 'workflow_dispatch'
+    if: github.event.label.name == 'publish-pypi' || github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
     needs: [require-version-bumps]
     strategy:
@@ -59,6 +59,8 @@ jobs:
             path: src/rai_sim
           - name: rai-whoami
             path: src/rai_whoami
+          - name: rai-pubtest
+            path: src/rai_pubtest
 
     steps:
       - uses: actions/checkout@v4
@@ -97,7 +99,7 @@ jobs:
 
   build_sdist:
     name: Build source distributions
-    if: github.event.label.name == 'publish-testpypi' || github.event_name == 'workflow_dispatch'
+    if: github.event.label.name == 'publish-pypi' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: [require-version-bumps]
 
@@ -122,6 +124,7 @@ jobs:
           cd ../rai_bench && poetry build --format sdist
           cd ../rai_sim && poetry build --format sdist
           cd ../rai_whoami && poetry build --format sdist
+          cd ../rai_pubtest && poetry build --format sdist
 
       - name: Upload source distributions
         uses: actions/upload-artifact@v4
@@ -133,13 +136,16 @@ jobs:
             src/rai_bench/dist/*.tar.gz
             src/rai_sim/dist/*.tar.gz
             src/rai_whoami/dist/*.tar.gz
+            src/rai_pubtest/dist/*.tar.gz
           retention-days: 7
 
   publish:
     name: Publish to Test PyPI
-    if: github.event.label.name == 'publish-testpypi' || github.event_name == 'workflow_dispatch'
+    if: github.event.label.name == 'publish-pypi' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: [require-version-bumps, build_wheels, build_sdist]
+    permissions:
+      id-token: write  # Required for OIDC authentication with PyPI Trusted Publishers
 
     steps:
       - uses: actions/checkout@v4
@@ -157,47 +163,66 @@ jobs:
           name: source-distributions
           path: dist
 
-      # Use twine instead of Poetry publish because:
-      # 1. Distributions are collected from artifacts into a single location
-      # 2. We publish multiple packages (wheels + sdists) in one command
-      # 3. Poetry publish requires running from each package directory separately
-      - name: Install twine
-        run: python -m pip install --upgrade twine
-
       # Version management:
       # - Package versions are defined in each package's pyproject.toml file
       # - Each package uses independent versioning (e.g., rai-core 2.5.10, rai-perception 0.1.5)
-      # - If a package version already exists on Test PyPI, twine will fail with an error
+      # - If a package version already exists on Test PyPI, publishing will fail with an error
       # - You must bump the version in pyproject.toml before publishing again
-      - name: Publish to Test PyPI
-        if: ${{ env.DRY_RUN != 'true' }}
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
+      - name: Prepare rai-pubtest for Test PyPI (Trusted Publisher validation)
+        if: env.DRY_RUN != 'true'
         run: |
-          twine upload --repository-url https://test.pypi.org/legacy/ wheels/**/*.whl dist/**/*.tar.gz
+          mkdir -p wheels-pubtest dist-pubtest
+          find wheels -name "*rai_pubtest*.whl" -exec cp {} wheels-pubtest/ \;
+          find dist -name "*rai-pubtest*.tar.gz" -exec cp {} dist-pubtest/ \;
+
+      - name: Publish rai-pubtest to Test PyPI (validate Trusted Publisher)
+        if: env.DRY_RUN != 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: |
+            wheels-pubtest
+            dist-pubtest
+          repository-url: https://test.pypi.org/legacy/
+
+      - name: Prepare other packages for Test PyPI
+        if: env.DRY_RUN != 'true'
+        run: |
+          mkdir -p wheels-others dist-others
+          find wheels -name "*.whl" ! -name "*rai_pubtest*" -exec cp {} wheels-others/ \;
+          find dist -name "*.tar.gz" ! -name "*rai-pubtest*" -exec cp {} dist-others/ \;
+
+      - name: Publish other packages to Test PyPI
+        if: env.DRY_RUN != 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: |
+            wheels-others
+            dist-others
+          repository-url: https://test.pypi.org/legacy/
 
       - name: Verify installation from Test PyPI
-        if: ${{ env.DRY_RUN != 'true' }}
+        if: env.DRY_RUN != 'true'
         run: |
-          pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ rai-core rai-perception rai-bench rai-sim rai-whoami
-          python -c "import rai; import rai_perception; import rai_bench; import rai_sim; import rai_whoami; print('Packages installed successfully')"
+          pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ rai-core rai-perception rai-bench rai-sim rai-whoami rai-pubtest
+          python -c "import rai; import rai_perception; import rai_bench; import rai_sim; import rai_whoami; import rai_pubtest; print('Packages installed successfully')"
 
       - name: Dry-run verify installation from local wheels
-        if: ${{ env.DRY_RUN == 'true' }}
+        if: env.DRY_RUN == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install wheels/**/*.whl --no-deps
-          python -c "import rai; import rai_perception; import rai_bench; import rai_sim; import rai_whoami; print('Packages installed successfully')"
+          python -c "import rai; import rai_perception; import rai_bench; import rai_sim; import rai_whoami; import rai_pubtest; print('Packages installed successfully')"
 
   publish_pypi:
     name: Publish to PyPI (manual approval)
-    if: (github.event.label.name == 'publish-testpypi' || github.event_name == 'workflow_dispatch') && env.DRY_RUN != 'true'
+    if: github.event.label.name == 'publish-pypi' || (github.event_name == 'workflow_dispatch' && inputs.dry_run != 'true')
     runs-on: ubuntu-latest
     needs: [publish]
     # Configure this Environment in GitHub settings with required reviewers to
     # enforce manual approval before publishing to production PyPI.
     environment: pypi
+    permissions:
+      id-token: write  # Required for OIDC authentication with PyPI Trusted Publishers
 
     steps:
       - uses: actions/checkout@v4
@@ -215,17 +240,33 @@ jobs:
           name: source-distributions
           path: dist
 
-      - name: Install twine
-        run: python -m pip install --upgrade twine
-
-      - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      - name: Prepare rai-pubtest for production PyPI (Trusted Publisher validation)
         run: |
-          twine upload wheels/**/*.whl dist/**/*.tar.gz
+          mkdir -p wheels-pubtest-prod dist-pubtest-prod
+          find wheels -name "*rai_pubtest*.whl" -exec cp {} wheels-pubtest-prod/ \;
+          find dist -name "*rai-pubtest*.tar.gz" -exec cp {} dist-pubtest-prod/ \;
+
+      - name: Publish rai-pubtest to PyPI (validate Trusted Publisher)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: |
+            wheels-pubtest-prod
+            dist-pubtest-prod
+
+      - name: Prepare other packages for production PyPI
+        run: |
+          mkdir -p wheels-prod dist-prod
+          find wheels -name "*.whl" ! -name "*rai_pubtest*" -exec cp {} wheels-prod/ \;
+          find dist -name "*.tar.gz" ! -name "*rai-pubtest*" -exec cp {} dist-prod/ \;
+
+      - name: Publish other packages to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: |
+            wheels-prod
+            dist-prod
 
       - name: Verify installation from PyPI
         run: |
-          pip install rai-core rai-perception rai-bench rai-sim rai-whoami
-          python -c "import rai; import rai_perception; import rai_bench; import rai_sim; import rai_whoami; print('Packages installed successfully')"
+          pip install rai-core rai-perception rai-bench rai-sim rai-whoami rai-pubtest
+          python -c "import rai; import rai_perception; import rai_bench; import rai_sim; import rai_whoami; import rai_pubtest; print('Packages installed successfully')"
