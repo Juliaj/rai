@@ -1,0 +1,1 @@
+ros2 launch examples/rai-semap.launch.py

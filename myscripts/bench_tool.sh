@@ -1,0 +1,2 @@
+source setup_shell.sh
+python src/rai_bench/rai_bench/examples/tool_calling_agent.py --model-name qwen2.5:7b --vendor ollama --extra-tool-calls 5 --task-types basic --prompt-detail descriptive --complexities medium

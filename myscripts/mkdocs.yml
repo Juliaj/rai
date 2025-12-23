@@ -1,0 +1,4 @@
+site_name: RAI Perception Docs
+docs_dir: src/rai_extensions/rai_perception
+nav:
+  - Home: README.md

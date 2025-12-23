@@ -1,0 +1,1 @@
+python examples/rosbot-xl-navigate-collect.py   --waypoints 2.0 0.0 4.0 0.0 2.0 2.0   --collect-duration 10.0   --use-sim-time

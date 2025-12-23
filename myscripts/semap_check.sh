@@ -1,0 +1,1 @@
+python examples/validate-semantic-map.py     --database-path semantic_map.db     --location-id default_location
