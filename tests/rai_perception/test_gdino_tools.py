@@ -235,10 +235,22 @@ class TestGetDistanceToObjectsTool:
         mock_client.wait_for_service.return_value = True
         mock_connector.node.create_client.return_value = mock_client
 
-        mock_connector.node.get_parameter.side_effect = [
-            MagicMock(value=1.0),  # outlier_sigma_threshold
-            MagicMock(value=0.001),  # conversion_ratio
-        ]
+        # Set ROS2 parameters
+        import rclpy
+        from rclpy.parameter import Parameter
+
+        mock_connector.node.set_parameters(
+            [
+                Parameter(
+                    "outlier_sigma_threshold",
+                    rclpy.parameter.Parameter.Type.DOUBLE,
+                    1.0,
+                ),
+                Parameter(
+                    "conversion_ratio", rclpy.parameter.Parameter.Type.DOUBLE, 0.001
+                ),
+            ]
+        )
 
         response = RAIGroundingDino.Response()
         from vision_msgs.msg import (

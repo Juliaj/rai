@@ -16,12 +16,14 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+import rclpy
 import sensor_msgs.msg
 from rai_perception.tools.segmentation_tools import (
     GetGrabbingPointTool,
     GetSegmentationTool,
     depth_to_point_cloud,
 )
+from rclpy.parameter import Parameter
 
 from rai_interfaces.srv import RAIGroundedSam, RAIGroundingDino
 
@@ -107,7 +109,14 @@ class TestGetSegmentationTool:
         mask_msg2.encoding = "mono8"  # Set encoding to avoid cv_bridge errors
         gsam_response.masks = [mask_msg1, mask_msg2]
 
-        mock_connector.node.get_parameter.return_value.value = 0.001
+        # Set ROS2 parameters
+        mock_connector.node.set_parameters(
+            [
+                Parameter(
+                    "conversion_ratio", rclpy.parameter.Parameter.Type.DOUBLE, 0.001
+                ),
+            ]
+        )
 
         with (
             patch(
@@ -229,7 +238,14 @@ class TestGetGrabbingPointTool:
         mask_msg.encoding = "mono8"  # Set encoding to avoid cv_bridge errors
         gsam_response.masks = [mask_msg]
 
-        mock_connector.node.get_parameter.return_value.value = 0.001
+        # Set ROS2 parameters
+        mock_connector.node.set_parameters(
+            [
+                Parameter(
+                    "conversion_ratio", rclpy.parameter.Parameter.Type.DOUBLE, 0.001
+                ),
+            ]
+        )
 
         mask = np.zeros((100, 100), dtype=np.uint8)
         mask[20:80, 20:80] = 255

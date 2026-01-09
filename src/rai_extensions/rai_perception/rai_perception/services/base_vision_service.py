@@ -12,24 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Base class for ROS2 vision services.
 
-import warnings
+It reads the model name from ROS2 parameters and uses the vision model registry to dynamically load the appropriate vision algorithm.
+
+Note: This class is named "service" (not "agent") to avoid confusion with the RAI agent abstraction (rai.agents.BaseAgent).
+"""
+
 from pathlib import Path
+from typing import Optional
 
-from rai.agents import BaseAgent
 from rai.communication.ros2 import ROS2Connector
 
-from rai_perception.services.weights import (
-    download_weights,
-    load_model_with_error_handling,
-)
+from .weights import download_weights, load_model_with_error_handling
 
 
-class BaseVisionAgent(BaseAgent):
-    """Deprecated: Use BaseVisionService from rai_perception.services instead.
+class BaseVisionService:
+    """Base class for vision services that load models and provide ROS2 services.
 
-    This base class is deprecated and will be removed in a future version.
-    Use BaseVisionService for ROS2 service nodes (not RAI agents).
+    It handles model loading, weight management, and ROS2 service setup.
     """
 
     WEIGHTS_URL: str = ""
@@ -41,26 +42,24 @@ class BaseVisionAgent(BaseAgent):
         self,
         weights_root_path: str | Path = DEFAULT_WEIGHTS_ROOT_PATH,
         ros2_name: str = "",
+        ros2_connector: Optional[ROS2Connector] = None,
     ):
-        warnings.warn(
-            "BaseVisionAgent is deprecated. Use BaseVisionService from "
-            "rai_perception.services instead. BaseVisionService is for ROS2 service nodes, "
-            "not RAI agents.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+        # TODO: After agents are deprecated, make ros2_connector a required parameter
+        # (remove Optional and default None). Services should always receive a connector.
         if not self.WEIGHTS_FILENAME:
             raise ValueError("WEIGHTS_FILENAME is not set")
-        super().__init__()
         self.weights_root_path = Path(weights_root_path)
         self.weights_path = (
             self.weights_root_path / self.WEIGHTS_DIR_PATH_PART / self.WEIGHTS_FILENAME
         )
-        # create the directory structure
         self.weights_path.parent.mkdir(parents=True, exist_ok=True)
+        self.ros2_connector = ros2_connector or ROS2Connector(
+            ros2_name, executor_type="single_threaded"
+        )
+        self.logger = self.ros2_connector.node.get_logger()
+
         if not self.weights_path.exists():
             download_weights(self.weights_path, self.logger, self.WEIGHTS_URL)
-        self.ros2_connector = ROS2Connector(ros2_name, executor_type="single_threaded")
 
     def _load_model_with_error_handling(self, model_class):
         """Load model with automatic error handling for corrupted weights.

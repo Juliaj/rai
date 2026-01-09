@@ -1,10 +1,10 @@
 # Rethinking RAI Perception
 
-_How not to make the API so damn hard to use_
+_How not to make the API so hard to use_
 
 Perception is a critical component in robotics applications, enabling object detection, segmentation, 3D gripping point estimation, and point cloud processing for ROS2-based systems. Within the RAI Framework, `rai_perception` serves as an extension providing vision capabilities through tools (`GetDetectionTool`, `GetObjectGrippingPointsTool`), ROS2 service nodes (`GroundedSamAgent`, `GroundingDinoAgent`), and utilities that integrate with other RAI components (e.g., `rai_semap`, `rai_bench`).
 
-As the codebase grows with recent work on [3D gripping point detection](https://github.com/RobotecAI/rai/pull/694) and new perception functionality in `rai_semap`, the current API design reveals significant usability challenges. Most APIs are designed for expert-level users, requiring deep understanding of algorithms, pipeline architecture, and domain-specific concepts. When cognitive load kills usability, application developers and LLM agents are left struggling with interfaces that should be simple and intent-based.
+As of January 2026, as the codebase grows with recent work on [3D gripping point detection](https://github.com/RobotecAI/rai/pull/694) and new perception functionality in `rai_semap`, the current API design reveals significant usability challenges because most new APIs are designed for expert-level users, requiring deep understanding of algorithms, pipeline architecture, and domain-specific concepts. The configuration supporting these APIs is also complex. The existing APIs lack support for use cases where developers need to switch to different detection models.
 
 This document proposes a redesign that addresses some of these challenges by organizing code into a tiered API structure that supports progressive disclosure. Rather than focusing solely on API surface changes, the redesign considers cognitive load and provides clear paths from simple, agent-friendly tools to configurable components to expert-level algorithms. The goal is to make perception capabilities accessible to all users while maintaining the flexibility needed for advanced use cases.
 
@@ -17,6 +17,7 @@ This document proposes a redesign that addresses some of these challenges by org
     -   [Audiences and Roles](#audiences-and-roles)
     -   [Abstraction Levels and Complexity](#abstraction-levels-and-complexity)
     -   [Usability Concerns](#usability-concerns)
+    -   [Error Handling Analysis](#error-handling-analysis)
 -   [Proposed Design](#proposed-design)
     -   [Tiered API Structure](#tiered-api-structure)
     -   [Folder Structure](#folder-structure)
@@ -45,6 +46,7 @@ This document proposes a redesign that addresses some of these challenges by org
 
     - `GroundedSamAgent`, `GroundingDinoAgent`: Standalone ROS2 service nodes providing detection/segmentation services
     - Launched via `rai_bringup/launch/openset.launch.py` and `rai_perception.scripts.run_perception_agents`
+    - Note: The "agent" terminology here is a breakage from the RAI agents abstraction and should be renamed (e.g., to "service" or "node") to reduce confusion with RAI's agent concept.
 
 3. Integration with rai_semap:
 
@@ -61,7 +63,7 @@ This document proposes a redesign that addresses some of these challenges by org
 -   Application Developers (High-level): Use tools (`GetDetectionTool`, `GetObjectGrippingPointsTool`) in agents to build applications with minimal configuration
 -   LLM agents (Runtime consumers): Consume perception tools at runtime via tool-calling mechanisms (tools implement LangChain `BaseTool` with `name`, `description`, `args_schema` for LLM understanding)
 -   Extension Developers (Mid-level): Extend tools or create custom perception pipelines by working within existing framework layers
--   Core Developers (Low-level): Implement new vision agents (extending `BaseVisionAgent`) or low-level algorithms from scratch
+-   Core Developers (Low-level): Implement new vision services (extending `BaseVisionAgent`, which should be renamed to avoid confusion with RAI's agent concept) or low-level algorithms from scratch
 
 ### Abstraction Levels and Complexity
 
@@ -109,6 +111,135 @@ Multi-tier abstraction with significant complexity:
 
 > **Note**: `GetSegmentationTool` and `GetGrabbingPointTool` exist but are not documented in Usage Patterns. `GetSegmentationTool` does not inherit from `BaseTool`, conflicting with the claim that tools implement LangChain `BaseTool`.
 
+### Error Handling Analysis
+
+**Current State:**
+
+1. **Tool-level error handling**: Tools catch `RaiTimeoutError` and return user-friendly messages (e.g., `pcl_detection_tools.py` line 195-197). Generic `Exception` is re-raised without context (line 198-199).
+
+2. **Parameter validation**: Inconsistent patterns:
+
+    - `pcl_detection_tools.py`: Raises `ValueError` with clear message if required ROS2 params missing (line 116-118)
+    - `gdino_tools.py`: Catches `ParameterUninitializedException`, logs warning, uses defaults (line 231-235)
+    - `segmentation_tools.py`: Generic `Exception("Received wrong message")` (line 94, 221)
+
+3. **Service call errors**: Tools return string error messages instead of raising exceptions (e.g., `gdino_tools.py` line 172: "Service call failed. Can't get detections.").
+
+4. **Algorithm errors**: Low-level algorithm failures (RANSAC, filtering) propagate as generic exceptions without actionable context.
+
+5. **RAI framework patterns**:
+    - `RaiTimeoutError`: Custom exception for timeouts (used in `pcl_detection_tools.py`)
+    - `ToolRunner`: Catches `ValidationError` (Pydantic) and generic `Exception`, returns `ToolMessage` with `status="error"` (rai_core)
+    - `BaseVisionAgent`: Handles model loading errors with automatic retry for corrupted weights
+
+**What to Keep:**
+
+1. **Custom timeout exception**: `RaiTimeoutError` provides clear timeout semantics and is handled gracefully in tools.
+
+2. **Parameter validation with defaults**: Pattern of catching `ParameterUninitializedException`/`ParameterNotDeclaredException` and using sensible defaults (e.g., `gdino_tools.py` line 231-235) is appropriate for optional parameters.
+
+3. **Tool-level error recovery**: Tools catching exceptions and returning user-friendly messages (rather than crashing) enables LLM agents to handle errors gracefully.
+
+4. **Pydantic validation**: Using Pydantic `BaseModel` for input validation provides automatic error messages for invalid inputs.
+
+**What to Change:**
+
+1. **Standardize exception types**: Replace generic `Exception` with domain-specific exceptions that provide structured error information:
+
+    - `ROS2ServiceError`: Service unavailable, call failed, timeout (general ROS2 error, reusable across framework)
+        - **Additional info**: Service name, timeout duration, service state (exists/ready/unavailable), underlying error type, retry suggestions
+        - **Value over generic Exception**: Enables error-specific handling (retry vs fail-fast), provides actionable recovery suggestions, includes service diagnostics
+    - `ROS2ParameterError`: Missing/invalid ROS2 parameters (general ROS2 error, reusable across framework)
+        - **Additional info**: Parameter name, expected type/value, where to set it (launch file, param file), related parameters, default value if available
+        - **Value over generic Exception**: Enables early validation at initialization, provides setup guidance, helps diagnose configuration issues
+    - `PerceptionAlgorithmError`: Algorithm-specific failures (RANSAC, filtering) - domain-specific
+        - **Additional info**: Algorithm stage, input data characteristics, alternative strategies, parameter suggestions
+        - **Value over generic Exception**: Enables automatic strategy switching, provides algorithm-specific recovery paths
+    - `PerceptionValidationError`: Input validation failures beyond Pydantic - domain-specific
+        - **Additional info**: Validation rule violated, input value, valid range/options, context about why validation failed
+        - **Value over generic Exception**: Enables targeted validation feedback, helps LLM agents understand constraints
+
+2. **Improve error messages for LLM agents**: Error messages should be:
+
+    - Actionable: Suggest fixes (e.g., "Try with quality='high'")
+    - Contextual: Include what failed and why
+    - Structured: Return error details in tool response format
+
+3. **Early validation**: Move parameter validation to tool initialization (like `pcl_detection_tools.py`) rather than runtime checks with generic exceptions.
+
+4. **Pipeline stage visibility**: Add intermediate error reporting for multi-stage pipelines (detection → segmentation → filtering → estimation) so failures can be diagnosed.
+
+5. **Error recovery suggestions**: Tools should suggest alternative approaches when algorithms fail (e.g., "RANSAC plane fitting failed. Try using strategy='centroid' instead of 'top_plane'").
+
+6. **Consistent error handling pattern**: Standardize error handling across all tools:
+    - Required params: Raise `ROS2ParameterError` at initialization
+    - Optional params: Use defaults with warning logs
+    - Service calls: Raise `ROS2ServiceError` with retry suggestions
+    - Algorithm failures: Raise `PerceptionAlgorithmError` with strategy suggestions
+    - Timeouts: Catch `RaiTimeoutError`, return user-friendly message
+
+**Implementation Plan:**
+
+1. Exception hierarchy implemented:
+
+    - `ROS2ServiceError` and `ROS2ParameterError` defined in `rai_core/rai/communication/ros2/exceptions.py` for framework-wide reuse
+    - `PerceptionError`, `PerceptionAlgorithmError`, `PerceptionValidationError` defined in `rai_perception/components/exceptions.py`:
+
+    ```python
+    # In rai_core/rai/communication/ros2/exceptions.py (for framework-wide use):
+    class ROS2ServiceError(Exception):
+        def __init__(self, service_name: str, timeout_sec: float,
+                     service_state: str = None, suggestion: str = None,
+                     underlying_error: Exception = None):
+            self.service_name = service_name
+            self.timeout_sec = timeout_sec
+            self.service_state = service_state  # "exists", "ready", "unavailable"
+            self.suggestion = suggestion  # "Check if service is running", "Try increasing timeout"
+            self.underlying_error = underlying_error
+            super().__init__(f"Service {service_name} error: {service_state or 'unavailable'}")
+
+    class ROS2ParameterError(Exception):
+        def __init__(self, param_name: str, expected_type: str = None,
+                     expected_value: str = None, suggestion: str = None,
+                     default_value: Any = None):
+            self.param_name = param_name
+            self.expected_type = expected_type
+            self.expected_value = expected_value
+            self.suggestion = suggestion  # "Set in launch file", "Check config YAML"
+            self.default_value = default_value
+            super().__init__(f"Parameter {param_name} error: {suggestion or 'missing or invalid'}")
+
+    # Export in rai_core/rai/communication/ros2/__init__.py:
+    # from .exceptions import ROS2ServiceError, ROS2ParameterError
+
+    # In rai_perception/components/exceptions.py:
+    class PerceptionError(Exception): ...
+
+    class PerceptionAlgorithmError(PerceptionError):
+        def __init__(self, algorithm_stage: str, strategy: str = None,
+                     suggestion: str = None, input_info: dict = None):
+            self.algorithm_stage = algorithm_stage  # "ransac", "filtering", "estimation"
+            self.strategy = strategy  # "top_plane", "isolation_forest"
+            self.suggestion = suggestion  # "Try strategy='centroid'"
+            self.input_info = input_info  # {"point_count": 100, "noise_level": "high"}
+            super().__init__(f"Algorithm error at {algorithm_stage}: {suggestion or 'failed'}")
+
+    class PerceptionValidationError(PerceptionError):
+        def __init__(self, validation_rule: str, input_value: Any,
+                     valid_range: str = None, suggestion: str = None):
+            self.validation_rule = validation_rule
+            self.input_value = input_value
+            self.valid_range = valid_range
+            self.suggestion = suggestion
+            super().__init__(f"Validation failed: {validation_rule}")
+    ```
+
+2. Update all tools to use custom exceptions and provide actionable error messages.
+
+3. Add error context to tool responses (error type, suggestion, retry strategy).
+
+4. Implement pipeline stage error reporting for multi-stage operations.
+
 ---
 
 ## Proposed Design
@@ -128,6 +259,14 @@ The tiered API structure organizes code into three abstraction levels:
 The folder structure organizes code by abstraction level to support progressive disclosure and reduce cognitive load. Each folder maps to a specific audience and abstraction tier, making it easier to discover appropriate APIs and understand component relationships.
 
 ```
+rai_core/rai/
+├── config/                      # General configuration utilities
+│   ├── loader.py               # Unified YAML/Python config loading
+│   └── merger.py               # Config merging with precedence: defaults → ROS2 params → overrides
+│
+└── communication/ros2/           # ROS2 communication infrastructure
+    └── parameters.py            # get_param_value() helper for extracting ROS2 parameter values
+
 rai_perception/
 ├── models/                    # Domain abstraction layer (model registry/interfaces)
 │   ├── detection.py          # DetectionModel registry, base classes
@@ -139,7 +278,7 @@ rai_perception/
 │                             # Combined models register in both with capability="detection+segmentation"
 │                             # TODO: Implement capability-based registration
 │
-├── tools/                    # High-level: LLM agent tools (BaseTool instances)
+├── tools/                     # High-level: LLM agent tools (BaseTool instances)
 │   ├── gdino_tools.py        # GetDetectionTool, GetDistanceToObjectsTool
 │   │                         # TODO: Read service_name from ROS2 param /detection_tool/service_name
 │   │                         # (default: "/detection") instead of hardcoding GDINO_SERVICE_NAME
@@ -148,13 +287,16 @@ rai_perception/
 │                             # TODO: Read service_name from ROS2 params instead of hardcoding
 │
 ├── components/                # Mid-level: Configurable components & inter-package APIs
-│   ├── perception_utils.py   # Inter-package APIs: extract_pointcloud_from_bbox, compute_3d_pose_from_bbox, enhance_detection_with_3d_pose
-│   ├── detection_publisher.py # DetectionPublisher (ROS2 node)
-│   ├── parameters.py         # ParameterRegistry: ROS2 parameter documentation/discovery
-│   │                         # Lists all ROS2 params: name, type, default, description, valid values
-│   │                         # Provides: get_param_info(name), list_all_params(), validate_param(name, value)
-│   │                         # TODO: Implement parameter registry for discoverability and validation
-│   └── pcl_detection.py      # PointCloudFromSegmentation, PointCloudFilter, GrippingPointEstimator + Config classes
+│   ├── perception_utils.py   # 3D pose computation and point cloud extraction from 2D detections
+│   │                         # Functions: compute_3d_pose_from_bbox(), extract_pointcloud_from_bbox(), enhance_detection_with_3d_pose()
+│   ├── detection_publisher.py # ROS2 node: subscribes to camera images, calls detection service, publishes detections
+│   ├── exceptions.py         # Perception-specific exceptions with rich error metadata for LLM agents
+│   │                         # Exceptions: PerceptionError, PerceptionAlgorithmError, PerceptionValidationError
+│   ├── perception_presets.py # Semantic preset definitions: "high", "medium", "low", "top_down", "centroid"
+│   │                         # API: get_preset(), apply_preset(), list_presets()
+│   │                         # Note: General config utilities (loader, merger, get_param_value) are in rai_core
+│   └── pcl_detection.py      # Point cloud processing components: PointCloudFromSegmentation, PointCloudFilter, GrippingPointEstimator
+│                             # Strategy pattern: dbscan, isolation_forest, centroid, top_plane, biggest_plane
 │
 ├── algorithms/                # Low-level: Core algorithms
 │   ├── boxer.py              # GDBoxer (detection algorithm)
@@ -192,14 +334,49 @@ rai_perception/
 
 This structure aligns with cognitive dimensions—abstraction level (tools → components → algorithms), penetrability (easy to find code by tier), domain correspondence (domain concepts visible within each tier), and role expressiveness (clear mapping to audiences). All configs are consolidated in `configs/` as user-facing runtime settings, reducing cognitive load from separating deployment vs algorithm configs.
 
+**Configuration Management Flow:**
+
+The configuration system follows a multi-tier approach with clear separation of concerns:
+
+1. **Algorithm Configs (Low-level)**: Algorithms load their own configs from `config_path` provided by model registry. Configs are self-contained (e.g., `gdino_config.py`). Flow: `models/registry` → `config_path` → `algorithms/boxer.py` loads config.
+
+2. **ROS2 Parameters (Deployment)**: ROS2 parameters handle deployment settings (topics, frames, timeouts, service names). Retrieved via `rai.communication.ros2.get_param_value()`. Flow: `configs/*.yaml` → ROS2 param system → components/services.
+
+3. **Component Configs (Mid-level)**: Pydantic Config classes (`PointCloudFilterConfig`, `GrippingPointEstimatorConfig`) handle algorithm parameters. Defined in `components/pcl_detection.py`, instantiated from ROS2 params or defaults.
+
+4. **Presets (High-level)**: Semantic presets map user-friendly names to component configs. Tools use presets internally. Flow: `tools/*.py` → `components/perception_presets.py` → `rai.config.merger` → component configs.
+
+5. **Config Merging**: `rai.config.merger` (in `rai_core`) handles precedence: defaults → ROS2 params → user overrides. Ensures consistent configuration resolution.
+
+**Configuration Infrastructure Status:**
+
+-   `rai.config.loader` (in `rai_core/rai/config/`): Unified YAML/Python config loading implemented. Replaces manual YAML loading in nodes. Handles ROS2 config pattern: `{node_name}: ros__parameters: {...}`.
+
+-   `rai.config.merger` (in `rai_core/rai/config/`): Config merging logic implemented. Merges with precedence: defaults → ROS2 params → user overrides. Supports nested configs.
+
+-   `rai.communication.ros2.get_param_value()` (in `rai_core/rai/communication/ros2/`): Helper function for extracting ROS2 parameter values with automatic type conversion.
+
+-   `components/perception_presets.py`: Semantic presets implemented. Provides presets: "high", "medium", "low", "top_down", "centroid" that map to component configs. Required for high-level tool API simplification.
+
 **Implementation steps:**
 
 1. Model Registry: Implement `models/detection.py` and `models/segmentation.py` with capability-based registries
-2. Parameter Registry: Implement `components/parameters.py` with `ParameterRegistry` class for ROS2 parameter documentation, discovery, and validation
-3. Model-Agnostic Services: Refactor `grounding_dino.py` and `grounded_sam.py` to `detection_agent.py` and `segmentation_agent.py` that read model from ROS2 params
-4. Tool Updates: Update tools to read service_name from ROS2 params (via parameter registry) instead of hardcoding
-5. Configuration Loading: Algorithms load their own configs from paths provided by registry (self-contained approach)
-6. Migration Path: Keep existing `grounding_dino.py`/`grounded_sam.py` as wrappers for backward compatibility during transition
+2. Configuration Infrastructure: ✅ Implemented:
+    - `rai.config.loader` (in `rai_core/rai/config/`): Unified YAML/Python config loading to replace manual loading in nodes
+    - `rai.config.merger` (in `rai_core/rai/config/`): Config merging with precedence (defaults → ROS2 params → overrides)
+    - `components/perception_presets.py`: Semantic presets for high-level tools (quality="high", approach="top_down")
+    - `components/exceptions.py`: Perception-specific exceptions with rich metadata
+3. Component Migration: ✅ Partially implemented, needs migration:
+    - `components/exceptions.py`: ✅ Implemented
+    - `components/perception_presets.py`: ✅ Implemented
+    - `components/perception_utils.py`: ✅ Implemented (currently in `ros2/perception_utils.py`, needs move)
+    - `components/detection_publisher.py`: ✅ Implemented (currently in `ros2/detection_publisher.py`, needs move)
+    - `components/pcl_detection.py`: ✅ Implemented (currently in `tools/pcl_detection.py`, needs move)
+    - TODO: Migrate files to `components/` directory and update imports
+4. Model-Agnostic Services: Refactor `grounding_dino.py` and `grounded_sam.py` to `detection_agent.py` and `segmentation_agent.py` that read model from ROS2 params
+5. Tool Updates: Update tools to read service_name from ROS2 params (via parameter registry) instead of hardcoding, and use presets for semantic configuration
+6. Configuration Loading: Algorithms load their own configs from paths provided by registry (self-contained approach)
+7. Migration Path: Keep existing `grounding_dino.py`/`grounded_sam.py` as wrappers for backward compatibility during transition
 
 ### API Analysis and Recommendations
 
@@ -216,6 +393,16 @@ The tiered API structure addresses these concerns through:
 3. Results should include confidence and metadata. Tools should return confidence scores, strategy used, and alternative options to help LLM agents make better decisions about retrying or adjusting approaches.
 
 This approach maintains the flexible low-level API in `algorithms/` for power users while providing progressive disclosure: simple for agents, powerful for experts.
+
+### Renaming Agents to Services
+
+The classes previously named "agents" (e.g., `GroundingDinoAgent`, `GroundedSamAgent`) are being renamed to "services" (e.g., `DetectionService`, `SegmentationService`) for two key reasons:
+
+1. **Abstraction Confusion**: These classes were incorrectly named "agents" despite being ROS2 service nodes, not RAI agents. The RAI framework has a distinct `rai.agents.BaseAgent` abstraction for high-level agent orchestration that uses connectors and tools. Calling ROS2 service nodes "agents" creates confusion about the architecture and makes it unclear what these classes actually do.
+
+2. **ROS2-Specific Implementation**: These classes are tightly coupled to ROS2 infrastructure—they create `ROS2Connector` instances, use ROS2 parameters (`rclpy.parameter.Parameter`), expose ROS2 services, and cannot work with other connector types. They are ROS2 service nodes, not abstracted agents that could work with different communication backends.
+
+The new naming clarifies that these are ROS2 service nodes that provide vision capabilities, while real RAI agents (if needed) would use these services as tools/resources rather than inheriting from them.
 
 ### Use Cases and Impact
 
@@ -285,13 +472,12 @@ Workflow:
 
 1. Developer wants different detection model → Check `models/detection.py` registry
 2. Find available models: `list_available_models()` shows "grounding_dino", "yolo", etc.
-3. Check `components/parameters.py` for required ROS2 params
-4. Set ROS2 param: `/detection_agent/model_name = "yolo"` (or desired model)
-5. Service reads param, queries registry: `get_model("yolo")` → returns (AlgorithmClass, config_path)
-6. Service instantiates: `algorithm = AlgorithmClass(weights_path, config_path=config_path)`
-7. Algorithm loads its own config (self-contained)
-8. Tools read `/detection_tool/service_name` from parameter registry (default: "/detection")
-9. Use tool normally - no code changes needed
+3. Set ROS2 param: `/detection_agent/model_name = "yolo"` (or desired model)
+4. Service reads param, queries registry: `get_model("yolo")` → returns (AlgorithmClass, config_path)
+5. Service instantiates: `algorithm = AlgorithmClass(weights_path, config_path=config_path)`
+6. Algorithm loads its own config (self-contained)
+7. Tools read `/detection_tool/service_name` from parameter registry (default: "/detection")
+8. Use tool normally - no code changes needed
 
 Remaining issues:
 
@@ -364,7 +550,7 @@ Remaining issues:
 Design compatibility:
 
 -   No blocking points: Current tiered structure (tools → components → algorithms) provides clear instrumentation points at each level
--   Parameter registry (`components/parameters.py`) can be extended to include data collection configuration
+-   ROS2 parameter helpers (`rai.communication.ros2.get_param_value()`) can be extended for data collection configuration
 -   Component-based design allows adding collection hooks without breaking existing APIs
 -   Consideration: Need to design collection API that works across all abstraction tiers without adding overhead to high-level tools
 

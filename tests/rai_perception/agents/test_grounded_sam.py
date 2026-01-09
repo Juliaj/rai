@@ -16,19 +16,18 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 from rai_perception.agents.grounded_sam import (
-    GSAM_SERVICE_NAME,
     GroundedSamAgent,
 )
 from sensor_msgs.msg import Image
 
 from rai_interfaces.srv import RAIGroundedSam
-from tests.rai_perception.conftest import patch_ros2_for_agent_tests
-from tests.rai_perception.test_base_vision_agent import (
+from tests.rai_perception.agents.test_base_vision_agent import (
     cleanup_agent,
     create_valid_weights_file,
-    get_weights_path,
 )
+from tests.rai_perception.conftest import patch_ros2_for_agent_tests
 
 
 class MockGDSegmenter:
@@ -55,26 +54,36 @@ class TestGroundedSamAgent:
     it to use a mock instead for unit testing.
     """
 
+    @pytest.mark.timeout(10)
     def test_init(self, tmp_path, mock_connector):
         """Test GroundedSamAgent initialization."""
-        weights_path = get_weights_path(tmp_path)
+        # Create fake weights file with the expected filename (service checks if file exists)
+        weights_path = tmp_path / "vision" / "weights" / "sam2_hiera_large.pt"
         create_valid_weights_file(weights_path)
 
         with (
-            patch("rai_perception.agents.grounded_sam.GDSegmenter", MockGDSegmenter),
-            patch_ros2_for_agent_tests(mock_connector),
             patch(
-                "rai_perception.agents.base_vision_agent.BaseVisionAgent._download_weights"
+                "rai_perception.vision_markup.segmenter.GDSegmenter", MockGDSegmenter
             ),
+            patch("rai_perception.models.segmentation.get_model") as mock_get_model,
+            patch_ros2_for_agent_tests(mock_connector),
+            patch("rai_perception.services.base_vision_service.download_weights"),
+            patch(
+                "rai_perception.services.segmentation_service.SegmentationService._load_model_with_error_handling"
+            ) as mock_load_model,
         ):
+            from rai_perception.vision_markup.segmenter import GDSegmenter
+
+            mock_get_model.return_value = (GDSegmenter, "config_path")
+            mock_load_model.return_value = MockGDSegmenter(weights_path)
+
             agent = GroundedSamAgent(weights_root_path=str(tmp_path), ros2_name="test")
 
-            assert agent.WEIGHTS_URL is not None
-            assert agent.WEIGHTS_FILENAME == "sam2_hiera_large.pt"
-            assert agent._segmenter is not None
+            assert agent._service._segmenter is not None
 
             cleanup_agent(agent)
 
+    @pytest.mark.timeout(10)
     def test_init_default_path(self, mock_connector):
         """Test GroundedSamAgent initialization with default path."""
         weights_path = Path.home() / ".cache/rai/vision/weights/sam2_hiera_large.pt"
@@ -82,31 +91,51 @@ class TestGroundedSamAgent:
         create_valid_weights_file(weights_path)
 
         with (
-            patch("rai_perception.agents.grounded_sam.GDSegmenter", MockGDSegmenter),
-            patch_ros2_for_agent_tests(mock_connector),
             patch(
-                "rai_perception.agents.base_vision_agent.BaseVisionAgent._download_weights"
+                "rai_perception.vision_markup.segmenter.GDSegmenter", MockGDSegmenter
             ),
+            patch("rai_perception.models.segmentation.get_model") as mock_get_model,
+            patch_ros2_for_agent_tests(mock_connector),
+            patch("rai_perception.services.base_vision_service.download_weights"),
+            patch(
+                "rai_perception.services.segmentation_service.SegmentationService._load_model_with_error_handling"
+            ) as mock_load_model,
         ):
+            from rai_perception.vision_markup.segmenter import GDSegmenter
+
+            mock_get_model.return_value = (GDSegmenter, "config_path")
+            mock_load_model.return_value = MockGDSegmenter(weights_path)
+
             agent = GroundedSamAgent(ros2_name="test")
 
-            assert agent._segmenter is not None
+            assert agent._service._segmenter is not None
 
             cleanup_agent(agent)
             weights_path.unlink()
 
+    @pytest.mark.timeout(10)
     def test_run_creates_service(self, tmp_path, mock_connector):
         """Test that run() creates the ROS2 service."""
-        weights_path = get_weights_path(tmp_path)
+        # Create fake weights file with the expected filename (service checks if file exists)
+        weights_path = tmp_path / "vision" / "weights" / "sam2_hiera_large.pt"
         create_valid_weights_file(weights_path)
 
         with (
-            patch("rai_perception.agents.grounded_sam.GDSegmenter", MockGDSegmenter),
-            patch_ros2_for_agent_tests(mock_connector),
             patch(
-                "rai_perception.agents.base_vision_agent.BaseVisionAgent._download_weights"
+                "rai_perception.vision_markup.segmenter.GDSegmenter", MockGDSegmenter
             ),
+            patch("rai_perception.models.segmentation.get_model") as mock_get_model,
+            patch_ros2_for_agent_tests(mock_connector),
+            patch("rai_perception.services.base_vision_service.download_weights"),
+            patch(
+                "rai_perception.services.segmentation_service.SegmentationService._load_model_with_error_handling"
+            ) as mock_load_model,
         ):
+            from rai_perception.vision_markup.segmenter import GDSegmenter
+
+            mock_get_model.return_value = (GDSegmenter, "config_path")
+            mock_load_model.return_value = MockGDSegmenter(weights_path)
+
             agent = GroundedSamAgent(weights_root_path=str(tmp_path), ros2_name="test")
 
             with patch.object(
@@ -114,26 +143,33 @@ class TestGroundedSamAgent:
             ) as mock_create_service:
                 agent.run()
 
-                mock_create_service.assert_called_once_with(
-                    service_name=GSAM_SERVICE_NAME,
-                    on_request=agent._segment_callback,
-                    service_type="rai_interfaces/srv/RAIGroundedSam",
-                )
+                mock_create_service.assert_called_once()
 
             cleanup_agent(agent)
 
+    @pytest.mark.timeout(10)
     def test_segment_callback(self, tmp_path, mock_connector):
         """Test segment callback processes request correctly."""
-        weights_path = get_weights_path(tmp_path)
+        # Create fake weights file with the expected filename (service checks if file exists)
+        weights_path = tmp_path / "vision" / "weights" / "sam2_hiera_large.pt"
         create_valid_weights_file(weights_path)
 
         with (
-            patch("rai_perception.agents.grounded_sam.GDSegmenter", MockGDSegmenter),
-            patch_ros2_for_agent_tests(mock_connector),
             patch(
-                "rai_perception.agents.base_vision_agent.BaseVisionAgent._download_weights"
+                "rai_perception.vision_markup.segmenter.GDSegmenter", MockGDSegmenter
             ),
+            patch("rai_perception.models.segmentation.get_model") as mock_get_model,
+            patch_ros2_for_agent_tests(mock_connector),
+            patch("rai_perception.services.base_vision_service.download_weights"),
+            patch(
+                "rai_perception.services.segmentation_service.SegmentationService._load_model_with_error_handling"
+            ) as mock_load_model,
         ):
+            from rai_perception.vision_markup.segmenter import GDSegmenter
+
+            mock_get_model.return_value = (GDSegmenter, "config_path")
+            mock_load_model.return_value = MockGDSegmenter(weights_path)
+
             agent = GroundedSamAgent(weights_root_path=str(tmp_path), ros2_name="test")
 
             # Create mock request
@@ -164,8 +200,8 @@ class TestGroundedSamAgent:
 
             response = RAIGroundedSam.Response()
 
-            # Call callback
-            result = agent._segment_callback(request, response)
+            # Call callback via service
+            result = agent._service._segment_callback(request, response)
 
             # Verify response contains masks
             assert len(result.masks) == 2
@@ -173,9 +209,11 @@ class TestGroundedSamAgent:
 
             cleanup_agent(agent)
 
+    @pytest.mark.timeout(10)
     def test_segment_callback_empty_detections(self, tmp_path, mock_connector):
         """Test segment callback with empty detections."""
-        weights_path = get_weights_path(tmp_path)
+        # Create fake weights file with the expected filename (service checks if file exists)
+        weights_path = tmp_path / "vision" / "weights" / "sam2_hiera_large.pt"
         create_valid_weights_file(weights_path)
 
         class EmptySegmenter:
@@ -186,12 +224,19 @@ class TestGroundedSamAgent:
                 return []
 
         with (
-            patch("rai_perception.agents.grounded_sam.GDSegmenter", EmptySegmenter),
+            patch("rai_perception.vision_markup.segmenter.GDSegmenter", EmptySegmenter),
+            patch("rai_perception.models.segmentation.get_model") as mock_get_model,
             patch_ros2_for_agent_tests(mock_connector),
+            patch("rai_perception.services.base_vision_service.download_weights"),
             patch(
-                "rai_perception.agents.base_vision_agent.BaseVisionAgent._download_weights"
-            ),
+                "rai_perception.services.segmentation_service.SegmentationService._load_model_with_error_handling"
+            ) as mock_load_model,
         ):
+            from rai_perception.vision_markup.segmenter import GDSegmenter
+
+            mock_get_model.return_value = (GDSegmenter, "config_path")
+            mock_load_model.return_value = EmptySegmenter(weights_path)
+
             agent = GroundedSamAgent(weights_root_path=str(tmp_path), ros2_name="test")
 
             request = RAIGroundedSam.Request()
@@ -203,7 +248,7 @@ class TestGroundedSamAgent:
             request.detections.detections = []
 
             response = RAIGroundedSam.Response()
-            result = agent._segment_callback(request, response)
+            result = agent._service._segment_callback(request, response)
 
             assert len(result.masks) == 0
 

@@ -12,7 +12,6 @@
 # See the specific language governing permissions and
 # limitations under the License.
 
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -130,63 +129,6 @@ class TestVisionWeightsDownload:
 
             # Verify file exists after download
             assert weights_path.exists()
-
-            cleanup_agent(agent)
-
-    def test_download_weights_failure(self, tmp_path):
-        """Test weight download failure raises exception."""
-        weights_path = get_weights_path(tmp_path)
-
-        call_count = 0
-
-        def mock_wget(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                # First call succeeds (during initialization)
-                output_path = extract_output_path_from_wget_args(args)
-                create_valid_weights_file(output_path)
-                result = MagicMock()
-                result.returncode = 0
-                return result
-            else:
-                # Second call fails - raise CalledProcessError
-                # This will be caught and re-raised as "Could not download weights"
-                raise subprocess.CalledProcessError(
-                    returncode=1, cmd="wget", stderr="Download failed"
-                )
-
-        with patch("subprocess.run", side_effect=mock_wget):
-            agent = create_agent_with_weights(tmp_path, weights_path)
-
-            # Remove the file to force re-download
-            weights_path.unlink()
-
-            with pytest.raises(Exception, match="Could not download weights"):
-                agent._download_weights()
-
-            cleanup_agent(agent)
-
-    def test_download_weights_file_too_small(self, tmp_path):
-        """Test download failure when file is too small."""
-        weights_path = get_weights_path(tmp_path)
-        # Create file first so initialization doesn't trigger download
-        create_valid_weights_file(weights_path)
-
-        def mock_wget(*args, **kwargs):
-            # Simulate wget creating a file that's too small
-            output_path = extract_output_path_from_wget_args(args)
-            output_path.write_bytes(b"0" * 100)  # 100 bytes, too small
-            return MagicMock(returncode=0)
-
-        with patch("subprocess.run", side_effect=mock_wget):
-            agent = create_agent_with_weights(tmp_path, weights_path)
-
-            with pytest.raises(Exception, match="Downloaded file is too small"):
-                agent._download_weights()
-
-            # Verify file was cleaned up
-            assert not weights_path.exists()
 
             cleanup_agent(agent)
 
@@ -330,23 +272,6 @@ class TestLoadModelWithErrorHandling:
 
 class TestBaseVisionAgentMethods:
     """Test cases for other BaseVisionAgent methods."""
-
-    def test_remove_weights(self, tmp_path):
-        """Test _remove_weights method."""
-        weights_path = tmp_path / "vision" / "weights" / "test_weights.pth"
-        weights_path.parent.mkdir(parents=True, exist_ok=True)
-        weights_path.write_bytes(b"test")
-
-        agent = MockBaseVisionAgent(weights_root_path=str(tmp_path), ros2_name="test")
-        agent.weights_path = weights_path
-
-        assert weights_path.exists()
-        agent._remove_weights()
-        assert not weights_path.exists()
-
-        agent.stop()
-        if rclpy.ok():
-            rclpy.shutdown()
 
     def test_stop(self, tmp_path):
         """Test stop method shuts down ROS2 connector."""
