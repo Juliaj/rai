@@ -15,13 +15,20 @@
 import numpy as np
 import pytest
 from cv_bridge import CvBridge
-from rai_perception.ros2.perception_utils import (
+from geometry_msgs.msg import Point, Pose
+from rai_perception.components.perception_utils import (
     compute_3d_pose_from_bbox,
+    enhance_detection_with_3d_pose,
     extract_pointcloud_from_bbox,
 )
 from sensor_msgs.msg import CameraInfo
 from std_msgs.msg import Header
-from vision_msgs.msg import BoundingBox2D, Detection2D, Point2D
+from vision_msgs.msg import (
+    BoundingBox2D,
+    Detection2D,
+    ObjectHypothesisWithPose,
+    Point2D,
+)
 
 
 @pytest.fixture
@@ -110,3 +117,63 @@ def test_extract_pointcloud_from_bbox_empty_depth(bridge, camera_info, detection
     result = extract_pointcloud_from_bbox(detection2d, depth_msg, camera_info, bridge)
 
     assert result is None
+
+
+def test_enhance_detection_with_3d_pose_success(
+    bridge, camera_info, depth_image, detection2d
+):
+    """Test enhancing detection with 3D pose when pose is empty."""
+    # Add empty result to detection
+    result = ObjectHypothesisWithPose()
+    result.pose.pose = Pose()
+    result.pose.pose.position = Point(x=0.0, y=0.0, z=0.0)
+    detection2d.results = [result]
+
+    success = enhance_detection_with_3d_pose(
+        detection2d, depth_image, camera_info, bridge
+    )
+
+    assert success is True
+    assert detection2d.results[0].pose.pose.position.z > 0
+
+
+def test_enhance_detection_with_3d_pose_already_has_pose(
+    bridge, camera_info, depth_image, detection2d
+):
+    """Test that enhancement returns False when pose already exists."""
+    result = ObjectHypothesisWithPose()
+    result.pose.pose = Pose()
+    result.pose.pose.position = Point(x=1.0, y=2.0, z=3.0)
+    detection2d.results = [result]
+
+    success = enhance_detection_with_3d_pose(
+        detection2d, depth_image, camera_info, bridge
+    )
+
+    assert success is False
+    assert detection2d.results[0].pose.pose.position.x == 1.0
+
+
+def test_enhance_detection_with_3d_pose_no_depth(bridge, camera_info, detection2d):
+    """Test that enhancement returns False when depth is missing."""
+    result = ObjectHypothesisWithPose()
+    result.pose.pose = Pose()
+    result.pose.pose.position = Point(x=0.0, y=0.0, z=0.0)
+    detection2d.results = [result]
+
+    success = enhance_detection_with_3d_pose(detection2d, None, camera_info, bridge)
+
+    assert success is False
+
+
+def test_enhance_detection_with_3d_pose_no_results(
+    bridge, camera_info, depth_image, detection2d
+):
+    """Test that enhancement returns False when detection has no results."""
+    detection2d.results = []
+
+    success = enhance_detection_with_3d_pose(
+        detection2d, depth_image, camera_info, bridge
+    )
+
+    assert success is False

@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import rclpy
 from rai.communication.ros2 import ROS2Connector
-from rai_perception.ros2.detection_publisher import DetectionPublisher
+from rai_perception.components.detection_publisher import DetectionPublisher
 
 
 @pytest.fixture(scope="module")
@@ -128,3 +128,53 @@ def test_get_double_parameter(detection_publisher):
         rclpy.parameter.Parameter.Type.DOUBLE,
     )
     assert detection_publisher._get_double_parameter("default_class_threshold") == 0.5
+
+
+def test_get_integer_parameter(detection_publisher):
+    """Test getting integer parameter."""
+    set_parameter(
+        detection_publisher,
+        "depth_fallback_region_size",
+        10,
+        rclpy.parameter.Parameter.Type.INTEGER,
+    )
+    assert (
+        detection_publisher._get_integer_parameter("depth_fallback_region_size") == 10
+    )
+
+
+def test_parse_detection_classes_empty_string(detection_publisher):
+    """Test parsing empty detection classes string."""
+    set_parameter(
+        detection_publisher,
+        "default_class_threshold",
+        0.3,
+        rclpy.parameter.Parameter.Type.DOUBLE,
+    )
+
+    class_names, class_thresholds = detection_publisher._parse_detection_classes("")
+
+    assert len(class_names) == 0
+    assert len(class_thresholds) == 0
+
+
+def test_parse_detection_classes_invalid_threshold(detection_publisher):
+    """Test parsing detection classes with invalid threshold falls back to default."""
+    set_parameter(
+        detection_publisher,
+        "default_class_threshold",
+        0.3,
+        rclpy.parameter.Parameter.Type.DOUBLE,
+    )
+
+    classes_str = "person:invalid, cup"
+    class_names, class_thresholds = detection_publisher._parse_detection_classes(
+        classes_str
+    )
+
+    assert len(class_names) == 2
+    assert "person" in class_names
+    assert "cup" in class_names
+    # Invalid threshold should fall back to default
+    assert class_thresholds["person"] == 0.3
+    assert class_thresholds["cup"] == 0.3

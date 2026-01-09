@@ -15,7 +15,7 @@
 import copy
 from typing import Any, Dict, Literal, Optional
 
-from rai_perception.tools.pcl_detection import (
+from rai_perception.components.pcl_detection import (
     GrippingPointEstimatorConfig,
     PointCloudFilterConfig,
 )

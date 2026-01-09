@@ -22,7 +22,7 @@ Manual test for GetGrippingPointTool with various demo scenarios. Each test:
 The demo app and rivz2 need to be started before running the test. The test will fail if the gripping points are not found.
 
 Usage:
-pytest tests/rai_extensions/test_gripping_points.py::test_gripping_points_manipulation_demo -m "manual" -s -v --strategy <strategy>
+pytest tests/rai_perception/components/test_gripping_points_integration.py::test_gripping_points_manipulation_demo -m "manual" -s -v --strategy <strategy>
 """
 
 import cv2
@@ -33,7 +33,7 @@ from cv_bridge import CvBridge
 from rai.communication.ros2 import wait_for_ros2_services, wait_for_ros2_topics
 from rai.communication.ros2.connectors import ROS2Connector
 from rai_perception import GetObjectGrippingPointsTool
-from rai_perception.tools.pcl_detection import (
+from rai_perception.components.pcl_detection import (
     GrippingPointEstimatorConfig,
     PointCloudFilterConfig,
     PointCloudFromSegmentationConfig,

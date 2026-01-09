@@ -13,14 +13,14 @@
 # limitations under the License.
 
 import pytest
+from rai_perception.components.pcl_detection import (
+    GrippingPointEstimatorConfig,
+    PointCloudFilterConfig,
+)
 from rai_perception.components.perception_presets import (
     apply_preset,
     get_preset,
     list_presets,
-)
-from rai_perception.tools.pcl_detection import (
-    GrippingPointEstimatorConfig,
-    PointCloudFilterConfig,
 )
 
 

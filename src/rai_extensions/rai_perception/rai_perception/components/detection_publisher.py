@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Robotec.AI
+# Copyright (C) 2025 Julia Jia
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""ROS2 node component that subscribes to camera images, calls detection services, and publishes detections.
+
+Architectural Note:
+This belongs in `components/` (not `services/`) because it's a client component:
+- Services expose ROS2 services (server-side, e.g., DetectionService)
+- Components are client-side: subscribe/publish topics, call services
+This node subscribes to camera topics, calls detection services, and publishes results - it does not expose a service.
+"""
 
 import time
 from pathlib import Path
@@ -26,7 +35,7 @@ from sensor_msgs.msg import CameraInfo, Image
 
 from rai_interfaces.msg import RAIDetectionArray
 from rai_interfaces.srv import RAIGroundingDino
-from rai_perception.ros2.perception_utils import enhance_detection_with_3d_pose
+from rai_perception.components.perception_utils import enhance_detection_with_3d_pose
 
 
 class DetectionPublisher:
@@ -59,9 +68,9 @@ class DetectionPublisher:
 
     def _initialize_parameters(self):
         """Initialize ROS2 parameters from YAML files."""
-        # Get directory containing this file
-        current_dir = Path(__file__).parent
-        config_dir = current_dir / "config"
+        # Get config directory (configs folder at package root)
+        package_root = Path(__file__).parent.parent
+        config_dir = package_root / "configs"
 
         # Declare config file path parameters first
         config_params = [
