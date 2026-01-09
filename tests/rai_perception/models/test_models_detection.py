@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import pytest
+from rai_perception.algorithms.boxer import GDBoxer
 from rai_perception.models.detection import get_model, list_available_models
-from rai_perception.vision_markup.boxer import GDBoxer
 
 
 def test_get_model_valid():

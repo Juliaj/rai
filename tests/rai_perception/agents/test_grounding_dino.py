@@ -19,7 +19,7 @@ import pytest
 from rai_perception.agents.grounding_dino import (
     GroundingDinoAgent,
 )
-from rai_perception.vision_markup.boxer import Box
+from rai_perception.algorithms.boxer import Box
 from sensor_msgs.msg import Image
 
 from tests.rai_perception.agents.test_base_vision_agent import (
@@ -91,7 +91,7 @@ class TestGroundingDinoAgent:
         create_valid_weights_file(weights_path)
 
         with (
-            patch("rai_perception.vision_markup.boxer.GDBoxer", MockGDBoxer),
+            patch("rai_perception.algorithms.boxer.GDBoxer", MockGDBoxer),
             patch("rai_perception.models.detection.get_model") as mock_get_model,
             patch_ros2_for_agent_tests(mock_connector),
             patch("rai_perception.services.base_vision_service.download_weights"),
@@ -99,7 +99,7 @@ class TestGroundingDinoAgent:
                 "rai_perception.services.detection_service.DetectionService._load_model_with_error_handling"
             ) as mock_load_model,
         ):
-            from rai_perception.vision_markup.boxer import GDBoxer
+            from rai_perception.algorithms.boxer import GDBoxer
 
             mock_get_model.return_value = (GDBoxer, "config_path")
             mock_load_model.return_value = MockGDBoxer(weights_path)
@@ -122,7 +122,7 @@ class TestGroundingDinoAgent:
         create_valid_weights_file(weights_path)
 
         with (
-            patch("rai_perception.vision_markup.boxer.GDBoxer", MockGDBoxer),
+            patch("rai_perception.algorithms.boxer.GDBoxer", MockGDBoxer),
             patch("rai_perception.models.detection.get_model") as mock_get_model,
             patch_ros2_for_agent_tests(mock_connector),
             patch("rai_perception.services.base_vision_service.download_weights"),
@@ -130,7 +130,7 @@ class TestGroundingDinoAgent:
                 "rai_perception.services.detection_service.DetectionService._load_model_with_error_handling"
             ) as mock_load_model,
         ):
-            from rai_perception.vision_markup.boxer import GDBoxer
+            from rai_perception.algorithms.boxer import GDBoxer
 
             mock_get_model.return_value = (GDBoxer, "config_path")
             mock_load_model.return_value = MockGDBoxer(weights_path)
@@ -150,7 +150,7 @@ class TestGroundingDinoAgent:
         create_valid_weights_file(weights_path)
 
         with (
-            patch("rai_perception.vision_markup.boxer.GDBoxer", MockGDBoxer),
+            patch("rai_perception.algorithms.boxer.GDBoxer", MockGDBoxer),
             patch("rai_perception.models.detection.get_model") as mock_get_model,
             patch_ros2_for_agent_tests(mock_connector),
             patch("rai_perception.services.base_vision_service.download_weights"),
@@ -158,7 +158,7 @@ class TestGroundingDinoAgent:
                 "rai_perception.services.detection_service.DetectionService._load_model_with_error_handling"
             ) as mock_load_model,
         ):
-            from rai_perception.vision_markup.boxer import GDBoxer
+            from rai_perception.algorithms.boxer import GDBoxer
 
             mock_get_model.return_value = (GDBoxer, "config_path")
             mock_load_model.return_value = MockGDBoxer(weights_path)
@@ -184,7 +184,7 @@ class TestGroundingDinoAgent:
         create_valid_weights_file(weights_path)
 
         with (
-            patch("rai_perception.vision_markup.boxer.GDBoxer", MockGDBoxer),
+            patch("rai_perception.algorithms.boxer.GDBoxer", MockGDBoxer),
             patch("rai_perception.models.detection.get_model") as mock_get_model,
             patch_ros2_for_agent_tests(mock_connector),
             patch("rai_perception.services.base_vision_service.download_weights"),
@@ -192,7 +192,7 @@ class TestGroundingDinoAgent:
                 "rai_perception.services.detection_service.DetectionService._load_model_with_error_handling"
             ) as mock_load_model,
         ):
-            from rai_perception.vision_markup.boxer import GDBoxer
+            from rai_perception.algorithms.boxer import GDBoxer
 
             mock_get_model.return_value = (GDBoxer, "config_path")
             mock_load_model.return_value = MockGDBoxer(weights_path)
@@ -239,7 +239,7 @@ class TestGroundingDinoAgent:
                 return []
 
         with (
-            patch("rai_perception.vision_markup.boxer.GDBoxer", EmptyBoxer),
+            patch("rai_perception.algorithms.boxer.GDBoxer", EmptyBoxer),
             patch("rai_perception.models.detection.get_model") as mock_get_model,
             patch_ros2_for_agent_tests(mock_connector),
             patch("rai_perception.services.base_vision_service.download_weights"),
@@ -247,7 +247,7 @@ class TestGroundingDinoAgent:
                 "rai_perception.services.detection_service.DetectionService._load_model_with_error_handling"
             ) as mock_load_model,
         ):
-            from rai_perception.vision_markup.boxer import GDBoxer
+            from rai_perception.algorithms.boxer import GDBoxer
 
             mock_get_model.return_value = (GDBoxer, "config_path")
             mock_load_model.return_value = EmptyBoxer(weights_path)

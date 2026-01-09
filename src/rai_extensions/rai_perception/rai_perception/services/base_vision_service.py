@@ -61,17 +61,20 @@ class BaseVisionService:
         if not self.weights_path.exists():
             download_weights(self.weights_path, self.logger, self.WEIGHTS_URL)
 
-    def _load_model_with_error_handling(self, model_class):
+    def _load_model_with_error_handling(
+        self, model_class, config_path: str | Path | None = None
+    ):
         """Load model with automatic error handling for corrupted weights.
 
         Args:
-            model_class: A class that can be instantiated with weights_path
+            model_class: A class that can be instantiated with weights_path and optionally config_path
+            config_path: Optional path to config file
 
         Returns:
             The loaded model instance
         """
         return load_model_with_error_handling(
-            model_class, self.weights_path, self.logger, self.WEIGHTS_URL
+            model_class, self.weights_path, self.logger, self.WEIGHTS_URL, config_path
         )
 
     def stop(self):

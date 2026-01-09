@@ -27,6 +27,7 @@ from rclpy import Future
 
 from rai_interfaces.srv import RAIGroundedSam, RAIGroundingDino
 from rai_perception import GDINO_SERVICE_NAME
+from rai_perception.algorithms.point_cloud import depth_to_point_cloud
 
 
 class PointCloudFromSegmentationConfig(BaseModel):
@@ -95,21 +96,6 @@ class PointCloudFilterConfig(BaseModel):
     lof_contamination: float = Field(
         default=0.05, description="Contamination rate for Local Outlier Factor"
     )
-
-
-def depth_to_point_cloud(
-    depth_image: NDArray[np.float32], fx: float, fy: float, cx: float, cy: float
-) -> NDArray[np.float32]:
-    height, width = depth_image.shape
-    x_coords = np.arange(width, dtype=np.float32)
-    y_coords = np.arange(height, dtype=np.float32)
-    x_grid, y_grid = np.meshgrid(x_coords, y_coords)
-    z = depth_image
-    x = (x_grid - float(cx)) * z / float(fx)
-    y = (y_grid - float(cy)) * z / float(fy)
-    points = np.stack((x, y, z), axis=-1).reshape(-1, 3)
-    points = points[points[:, 2] > 0]
-    return points.astype(np.float32, copy=False)
 
 
 def _publish_gripping_point_debug_data(

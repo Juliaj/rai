@@ -21,15 +21,20 @@ from pathlib import Path
 
 
 def load_model_with_error_handling(
-    model_class, weights_path: Path, logger: Logger, weights_url: str
+    model_class,
+    weights_path: Path,
+    logger: Logger,
+    weights_url: str,
+    config_path: str | Path | None = None,
 ):
     """Load model with automatic error handling for corrupted weights.
 
     Args:
-        model_class: A class that can be instantiated with weights_path
+        model_class: A class that can be instantiated with weights_path and optionally config_path
         weights_path: Path to model weights file
         logger: Logger instance for error messages
         weights_url: URL to download weights from if corrupted
+        config_path: Optional path to config file
 
     Returns:
         The loaded model instance
@@ -38,14 +43,20 @@ def load_model_with_error_handling(
         RuntimeError: If model loading fails (after retry)
     """
     try:
-        return model_class(weights_path)
+        if config_path is not None:
+            return model_class(weights_path, config_path=config_path)
+        else:
+            return model_class(weights_path)
     except RuntimeError as e:
         logger.error(f"Could not load model: {e}")
         if "PytorchStreamReader" in str(e):
             logger.error("The weights might be corrupted. Redownloading...")
             remove_weights(weights_path)
             download_weights(weights_path, logger, weights_url)
-            return model_class(weights_path)
+            if config_path is not None:
+                return model_class(weights_path, config_path=config_path)
+            else:
+                return model_class(weights_path)
         else:
             raise e
 

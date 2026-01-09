@@ -61,7 +61,7 @@ class DetectionService(BaseVisionService):
         self.logger.info(
             f"Loading detection model '{model_name}' (config: {config_path})"
         )
-        self._boxer = self._load_model_with_error_handling(AlgorithmClass)
+        self._boxer = self._load_model_with_error_handling(AlgorithmClass, config_path)
         self.logger.info(f"DetectionService initialized with model '{model_name}'")
 
     def run(self):

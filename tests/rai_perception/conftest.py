@@ -19,6 +19,26 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+def pytest_configure(config):
+    """Configure pytest to suppress deprecation warnings for deprecated agent classes."""
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore:GroundedSamAgent is deprecated:DeprecationWarning",
+    )
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore:GroundingDinoAgent is deprecated:DeprecationWarning",
+    )
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore:BaseVisionAgent is deprecated:DeprecationWarning",
+    )
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore:Importing from timm.models.layers is deprecated:FutureWarning",
+    )
+
+
 @pytest.fixture
 def mock_connector():
     """Mock ROS2Connector for testing perception tools.

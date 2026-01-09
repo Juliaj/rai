@@ -21,7 +21,6 @@ import sensor_msgs.msg
 from rai_perception.tools.segmentation_tools import (
     GetGrabbingPointTool,
     GetSegmentationTool,
-    depth_to_point_cloud,
 )
 from rclpy.parameter import Parameter
 
@@ -291,35 +290,3 @@ class TestGetGrabbingPointTool:
             assert isinstance(result, list)
             assert len(result) == 1
             assert len(result[0]) == 2  # (centroid, rotation)
-
-
-class TestDepthToPointCloud:
-    """Test cases for depth_to_point_cloud function."""
-
-    def test_depth_to_point_cloud(self):
-        """Test depth_to_point_cloud conversion."""
-        # Create a simple depth image (100x100, 1 meter depth)
-        depth_image = np.ones((100, 100), dtype=np.float32) * 1.0
-
-        fx, fy = 500.0, 500.0
-        cx, cy = 50.0, 50.0
-
-        points = depth_to_point_cloud(depth_image, fx, fy, cx, cy)
-
-        # Should have points (excluding zero depth)
-        assert len(points) > 0
-        assert points.shape[1] == 3  # x, y, z coordinates
-
-    def test_depth_to_point_cloud_with_zero_depth(self):
-        """Test depth_to_point_cloud filters zero depth."""
-        depth_image = np.zeros((100, 100), dtype=np.float32)
-        depth_image[20:80, 20:80] = 1.0  # Only center region has depth
-
-        fx, fy = 500.0, 500.0
-        cx, cy = 50.0, 50.0
-
-        points = depth_to_point_cloud(depth_image, fx, fy, cx, cy)
-
-        # Should only have points from non-zero depth region
-        assert len(points) > 0
-        assert all(points[:, 2] > 0)  # All z values should be positive

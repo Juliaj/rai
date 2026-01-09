@@ -98,6 +98,19 @@ def extract_output_path_from_wget_args(args) -> Path:
 class TestVisionWeightsDownload:
     """Test cases for BaseVisionAgent._download_weights method."""
 
+    def setup_method(self):
+        """Initialize ROS2 before tests to prevent auto-initialization warning."""
+        if not rclpy.ok():
+            rclpy.init()
+
+    def teardown_method(self):
+        """Clean up ROS2 context after each test."""
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
+
     def test_download_weights_success(self, tmp_path):
         """Test successful weight download."""
         weights_path = get_weights_path(tmp_path)
@@ -135,6 +148,19 @@ class TestVisionWeightsDownload:
 
 class TestBaseVisionAgentInit:
     """Test cases for BaseVisionAgent.__init__ method."""
+
+    def setup_method(self):
+        """Initialize ROS2 before tests to prevent auto-initialization warning."""
+        if not rclpy.ok():
+            rclpy.init()
+
+    def teardown_method(self):
+        """Clean up ROS2 context after each test."""
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
     def test_init_without_weights_filename(self):
         """Test that ValueError is raised when WEIGHTS_FILENAME is not set."""
@@ -194,6 +220,19 @@ class TestBaseVisionAgentInit:
 
 class TestLoadModelWithErrorHandling:
     """Test cases for BaseVisionAgent._load_model_with_error_handling method."""
+
+    def setup_method(self):
+        """Initialize ROS2 before tests to prevent auto-initialization warning."""
+        if not rclpy.ok():
+            rclpy.init()
+
+    def teardown_method(self):
+        """Clean up ROS2 context after each test."""
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
     def test_load_model_success(self, tmp_path):
         """Test successful model loading."""
@@ -272,6 +311,19 @@ class TestLoadModelWithErrorHandling:
 
 class TestBaseVisionAgentMethods:
     """Test cases for other BaseVisionAgent methods."""
+
+    def setup_method(self):
+        """Initialize ROS2 before tests to prevent auto-initialization warning."""
+        if not rclpy.ok():
+            rclpy.init()
+
+    def teardown_method(self):
+        """Clean up ROS2 context after each test."""
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
     def test_stop(self, tmp_path):
         """Test stop method shuts down ROS2 connector."""

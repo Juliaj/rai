@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 import rclpy
 from rai.communication.ros2 import ROS2Connector
@@ -39,13 +41,20 @@ def detection_publisher(ros2_context):
 
     Uses single_threaded executor to avoid executor performance warnings
     in simple unit tests that don't need multi-threaded execution.
+    Mocks the DINO service client to prevent warnings about unavailable service.
     """
     connector = ROS2Connector(
         node_name="detection_publisher", executor_type="single_threaded"
     )
-    node = DetectionPublisher(connector=connector)
-    yield node
-    node.connector.shutdown()
+
+    # Mock the service client to prevent warnings about unavailable service
+    mock_client = MagicMock()
+    mock_client.wait_for_service.return_value = True
+
+    with patch.object(connector.node, "create_client", return_value=mock_client):
+        node = DetectionPublisher(connector=connector)
+        yield node
+        node.connector.shutdown()
 
 
 def test_detection_publisher_initialization(detection_publisher):

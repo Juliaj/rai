@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Robotec.AI
+# Copyright (C) 2025 Robotec.AI
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Segmentation algorithm: GDSegmenter.
+
+Low-level segmentation algorithm that loads its own config (self-contained).
+"""
 
 import logging
 from os import PathLike
@@ -29,13 +33,31 @@ from vision_msgs.msg import BoundingBox2D
 
 
 class GDSegmenter:
+    """Grounded SAM segmentation algorithm.
+
+    Algorithm loads its own config (self-contained).
+    """
+
     def __init__(
         self,
         weight_path: str | PathLike,
+        config_path: str | PathLike | None = None,
         use_cuda: bool = True,
     ):
+        """Initialize GDSegmenter.
+
+        Args:
+            weight_path: Path to model weights file
+            config_path: Path to config file. If None, uses default location
+            use_cuda: Whether to use CUDA if available
+        """
         self.logger = logging.getLogger(__name__)
-        self.cfg_path = "seg_config.yml"
+        if config_path is None:
+            # Default config path for backward compatibility
+            from pathlib import Path
+
+            config_path = Path(__file__).parent.parent / "configs" / "seg_config.yml"
+        self.cfg_path = str(config_path)
         hydra.core.global_hydra.GlobalHydra.instance().clear()
         hydra.initialize_config_module("rai_perception.configs")
 
@@ -55,6 +77,7 @@ class GDSegmenter:
         self.bridge = CvBridge()
 
     def _get_boxes_xyxy(self, bboxes: List[BoundingBox2D]) -> List[np.ndarray]:
+        """Convert ROS2 bounding boxes to xyxy format."""
         data = []
         for bbox in bboxes:
             center_x = bbox.center.position.x
@@ -74,6 +97,15 @@ class GDSegmenter:
     def get_segmentation(
         self, image_msg: Image, ros_bboxes: List[BoundingBox2D]
     ) -> List[np.ndarray]:
+        """Generate segmentation masks for bounding boxes.
+
+        Args:
+            image_msg: ROS2 Image message
+            ros_bboxes: List of ROS2 BoundingBox2D messages
+
+        Returns:
+            List of segmentation masks as numpy arrays
+        """
         img_array = convert_ros_img_to_ndarray(image_msg, image_msg.encoding)
         self.sam2_predictor.set_image(img_array)
         bboxes = self._get_boxes_xyxy(ros_bboxes)

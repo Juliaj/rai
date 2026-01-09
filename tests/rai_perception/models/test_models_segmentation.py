@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import pytest
+from rai_perception.algorithms.segmenter import GDSegmenter
 from rai_perception.models.segmentation import get_model, list_available_models
-from rai_perception.vision_markup.segmenter import GDSegmenter
 
 
 def test_get_model_valid():

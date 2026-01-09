@@ -35,34 +35,7 @@ from rai_perception import (
     PointCloudFilterConfig,
     PointCloudFromSegmentation,
     PointCloudFromSegmentationConfig,
-    depth_to_point_cloud,
 )
-
-
-def test_depth_to_point_cloud():
-    """Test depth image to point cloud conversion algorithm."""
-    # Create a simple 2x2 depth image with known values
-    depth_image = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
-
-    # Camera intrinsics
-    fx, fy, cx, cy = 100.0, 100.0, 1.0, 1.0
-
-    # Convert to point cloud
-    points = depth_to_point_cloud(depth_image, fx, fy, cx, cy)
-
-    # Should have 4 points (2x2 image)
-    assert points.shape[0] == 4
-    assert points.shape[1] == 3  # X, Y, Z coordinates
-
-    # Check that all Z values match the depth image
-    expected_z_values = [1.0, 2.0, 3.0, 4.0]
-    actual_z_values = sorted(points[:, 2].tolist())
-    np.testing.assert_array_almost_equal(actual_z_values, expected_z_values)
-
-    # Verify no points with zero depth are included
-    zero_depth = np.zeros((2, 2), dtype=np.float32)
-    points_zero = depth_to_point_cloud(zero_depth, fx, fy, cx, cy)
-    assert points_zero.shape[0] == 0
 
 
 def test_gripping_point_estimator():

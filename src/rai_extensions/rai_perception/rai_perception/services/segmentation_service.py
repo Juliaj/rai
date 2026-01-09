@@ -65,7 +65,9 @@ class SegmentationService(BaseVisionService):
         self.logger.info(
             f"Loading segmentation model '{model_name}' (config: {config_path})"
         )
-        self._segmenter = self._load_model_with_error_handling(AlgorithmClass)
+        self._segmenter = self._load_model_with_error_handling(
+            AlgorithmClass, config_path
+        )
         self.logger.info(f"SegmentationService initialized with model '{model_name}'")
 
     def run(self):

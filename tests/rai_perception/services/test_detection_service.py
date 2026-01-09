@@ -22,8 +22,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import rclpy
 from rai_perception.agents.grounding_dino import GDINO_SERVICE_NAME
+from rai_perception.algorithms.boxer import Box
 from rai_perception.services.detection_service import DetectionService
-from rai_perception.vision_markup.boxer import Box
 from rclpy.parameter import Parameter
 from sensor_msgs.msg import Image
 
@@ -76,7 +76,7 @@ class TestDetectionService:
         create_valid_weights_file(weights_path)
 
         with (
-            patch("rai_perception.vision_markup.boxer.GDBoxer", MockGDBoxer),
+            patch("rai_perception.algorithms.boxer.GDBoxer", MockGDBoxer),
             patch("rai_perception.models.detection.get_model") as mock_get_model,
             patch_ros2_for_service_tests(mock_connector),
             patch("rai_perception.services.base_vision_service.download_weights"),
@@ -84,7 +84,7 @@ class TestDetectionService:
                 DetectionService, "_load_model_with_error_handling"
             ) as mock_load_model,
         ):
-            from rai_perception.vision_markup.boxer import GDBoxer
+            from rai_perception.algorithms.boxer import GDBoxer
 
             mock_get_model.return_value = (GDBoxer, "config_path")
             mock_load_model.return_value = MockGDBoxer(weights_path)
@@ -129,7 +129,7 @@ class TestDetectionService:
                 return []
 
         with (
-            patch("rai_perception.vision_markup.boxer.GDBoxer", EmptyBoxer),
+            patch("rai_perception.algorithms.boxer.GDBoxer", EmptyBoxer),
             patch("rai_perception.models.detection.get_model") as mock_get_model,
             patch_ros2_for_service_tests(mock_connector),
             patch("rai_perception.services.base_vision_service.download_weights"),
@@ -137,7 +137,7 @@ class TestDetectionService:
                 DetectionService, "_load_model_with_error_handling"
             ) as mock_load_model,
         ):
-            from rai_perception.vision_markup.boxer import GDBoxer
+            from rai_perception.algorithms.boxer import GDBoxer
 
             mock_get_model.return_value = (GDBoxer, "config_path")
             mock_load_model.return_value = EmptyBoxer(weights_path)
@@ -188,7 +188,7 @@ class TestDetectionService:
         create_valid_weights_file(weights_path)
 
         with (
-            patch("rai_perception.vision_markup.boxer.GDBoxer", MockGDBoxer),
+            patch("rai_perception.algorithms.boxer.GDBoxer", MockGDBoxer),
             patch("rai_perception.models.detection.get_model") as mock_get_model,
             patch_ros2_for_service_tests(mock_connector),
             patch("rai_perception.services.base_vision_service.download_weights"),
@@ -196,7 +196,7 @@ class TestDetectionService:
                 DetectionService, "_load_model_with_error_handling"
             ) as mock_load_model,
         ):
-            from rai_perception.vision_markup.boxer import GDBoxer
+            from rai_perception.algorithms.boxer import GDBoxer
 
             mock_get_model.return_value = (GDBoxer, "config_path")
             mock_load_model.return_value = MockGDBoxer(weights_path)
@@ -248,7 +248,7 @@ class TestDetectionService:
         create_valid_weights_file(weights_path)
 
         with (
-            patch("rai_perception.vision_markup.boxer.GDBoxer", MockGDBoxer),
+            patch("rai_perception.algorithms.boxer.GDBoxer", MockGDBoxer),
             patch("rai_perception.models.detection.get_model") as mock_get_model,
             patch_ros2_for_service_tests(mock_connector),
             patch("rai_perception.services.base_vision_service.download_weights"),
@@ -256,7 +256,7 @@ class TestDetectionService:
                 DetectionService, "_load_model_with_error_handling"
             ) as mock_load_model,
         ):
-            from rai_perception.vision_markup.boxer import GDBoxer
+            from rai_perception.algorithms.boxer import GDBoxer
 
             mock_get_model.return_value = (GDBoxer, "config_path")
             mock_load_model.return_value = MockGDBoxer(weights_path)

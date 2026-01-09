@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import rclpy
-from rai_perception.vision_markup.boxer import Box, GDBoxer
+from rai_perception.algorithms.boxer import Box, GDBoxer
 from rclpy.time import Time
 from sensor_msgs.msg import Image
 from vision_msgs.msg import Detection2D
@@ -74,13 +74,23 @@ class TestGDBoxer:
             # Ignore errors during shutdown - thread may have already been cleaned up
             pass
 
-    def test_gdboxer_initialization(self, tmp_path):
-        """Test GDBoxer initialization with use_cuda=True to verify model is always initialized."""
+    def _create_test_weights_file(self, tmp_path):
+        """Helper to create a test weights file."""
         weights_path = tmp_path / "weights.pth"
         weights_path.parent.mkdir(parents=True, exist_ok=True)
         weights_path.write_bytes(b"test")
+        return weights_path
 
-        with patch("rai_perception.vision_markup.boxer.Model") as mock_model:
+    @staticmethod
+    def _create_mock_image_array():
+        """Helper to create a mock image array for testing."""
+        return np.zeros((100, 100, 3), dtype=np.uint8)
+
+    def test_gdboxer_initialization(self, tmp_path):
+        """Test GDBoxer initialization with use_cuda=True to verify model is always initialized."""
+        weights_path = self._create_test_weights_file(tmp_path)
+
+        with patch("rai_perception.algorithms.boxer.Model") as mock_model:
             mock_model_instance = MagicMock()
             mock_model.return_value = mock_model_instance
 
@@ -93,14 +103,12 @@ class TestGDBoxer:
 
     def test_gdboxer_initialization_use_cuda_false(self, tmp_path):
         """Test GDBoxer initialization with use_cuda=False to verify CPU device selection."""
-        weights_path = tmp_path / "weights.pth"
-        weights_path.parent.mkdir(parents=True, exist_ok=True)
-        weights_path.write_bytes(b"test")
+        weights_path = self._create_test_weights_file(tmp_path)
 
         with (
-            patch("rai_perception.vision_markup.boxer.Model") as mock_model,
+            patch("rai_perception.algorithms.boxer.Model") as mock_model,
             patch(
-                "rai_perception.vision_markup.boxer.logging.getLogger"
+                "rai_perception.algorithms.boxer.logging.getLogger"
             ) as mock_get_logger,
         ):
             mock_model_instance = MagicMock()
@@ -122,13 +130,11 @@ class TestGDBoxer:
 
     def test_gdboxer_get_boxes(self, tmp_path):
         """Test GDBoxer get_boxes method with use_cuda=True to verify model is initialized."""
-        weights_path = tmp_path / "weights.pth"
-        weights_path.parent.mkdir(parents=True, exist_ok=True)
-        weights_path.write_bytes(b"test")
+        weights_path = self._create_test_weights_file(tmp_path)
 
         with (
-            patch("rai_perception.vision_markup.boxer.Model") as mock_model,
-            patch("rai_perception.vision_markup.boxer.CvBridge") as mock_bridge,
+            patch("rai_perception.algorithms.boxer.Model") as mock_model,
+            patch("rai_perception.algorithms.boxer.CvBridge") as mock_bridge,
         ):
             mock_model_instance = MagicMock()
             mock_model.return_value = mock_model_instance
@@ -143,9 +149,8 @@ class TestGDBoxer:
             # Mock bridge
             mock_bridge_instance = MagicMock()
             mock_bridge.return_value = mock_bridge_instance
-            # Return a valid numpy array (BGR format) that cv2.cvtColor can process
-            mock_bridge_instance.imgmsg_to_cv2.return_value = np.zeros(
-                (100, 100, 3), dtype=np.uint8
+            mock_bridge_instance.imgmsg_to_cv2.return_value = (
+                self._create_mock_image_array()
             )
 
             boxer = GDBoxer(str(weights_path), use_cuda=True)
@@ -163,13 +168,11 @@ class TestGDBoxer:
 
     def test_gdboxer_get_boxes_empty(self, tmp_path):
         """Test GDBoxer get_boxes with no detections."""
-        weights_path = tmp_path / "weights.pth"
-        weights_path.parent.mkdir(parents=True, exist_ok=True)
-        weights_path.write_bytes(b"test")
+        weights_path = self._create_test_weights_file(tmp_path)
 
         with (
-            patch("rai_perception.vision_markup.boxer.Model") as mock_model,
-            patch("rai_perception.vision_markup.boxer.CvBridge") as mock_bridge,
+            patch("rai_perception.algorithms.boxer.Model") as mock_model,
+            patch("rai_perception.algorithms.boxer.CvBridge") as mock_bridge,
         ):
             mock_model_instance = MagicMock()
             mock_model.return_value = mock_model_instance
@@ -180,9 +183,8 @@ class TestGDBoxer:
 
             mock_bridge_instance = MagicMock()
             mock_bridge.return_value = mock_bridge_instance
-            # Return a valid numpy array (BGR format) that cv2.cvtColor can process
-            mock_bridge_instance.imgmsg_to_cv2.return_value = np.zeros(
-                (100, 100, 3), dtype=np.uint8
+            mock_bridge_instance.imgmsg_to_cv2.return_value = (
+                self._create_mock_image_array()
             )
 
             boxer = GDBoxer(str(weights_path), use_cuda=False)

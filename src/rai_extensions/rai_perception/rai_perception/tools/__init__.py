@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from rai_perception.algorithms.point_cloud import depth_to_point_cloud
+
 from .gdino_tools import DistanceMeasurement, GetDetectionTool, GetDistanceToObjectsTool
 from .pcl_detection import (
     GrippingPointEstimator,
@@ -20,7 +22,6 @@ from .pcl_detection import (
     PointCloudFilterConfig,
     PointCloudFromSegmentation,
     PointCloudFromSegmentationConfig,
-    depth_to_point_cloud,
 )
 from .pcl_detection_tools import (
     GetObjectGrippingPointsTool,

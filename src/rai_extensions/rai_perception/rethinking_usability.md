@@ -30,8 +30,6 @@ This document proposes a redesign that addresses some of these challenges by org
 
 ---
 
----
-
 ## Current State Analysis
 
 ### Usage Patterns

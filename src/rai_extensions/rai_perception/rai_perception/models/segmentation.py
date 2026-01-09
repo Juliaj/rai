@@ -1,4 +1,4 @@
-# Copyright (C) 2025 Julia Jia
+# Copyright (C) 2025 Robotec.AI
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ Example:
 from pathlib import Path
 from typing import Tuple, Type
 
-from rai_perception.vision_markup.segmenter import GDSegmenter
+from rai_perception.algorithms.segmenter import GDSegmenter
 
 # Registry: model_name -> (AlgorithmClass, config_path)
 # To add a new segmentation model, add an entry here with the model name, algorithm class, and config path.

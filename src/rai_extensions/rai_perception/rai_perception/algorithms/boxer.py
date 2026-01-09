@@ -1,4 +1,4 @@
-# Copyright (C) 2024 Robotec.AI
+# Copyright (C) 2025 Robotec.AI
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Detection algorithm: GDBoxer.
+
+Low-level detection algorithm that loads its own config from config_path
+provided by the model registry.
+"""
 
 import logging
 from os import PathLike
@@ -33,6 +38,8 @@ from vision_msgs.msg import (
 
 
 class Box:
+    """Represents a detected bounding box with metadata."""
+
     def __init__(self, center, size_x, size_y, phrase, confidence):
         self.phrase = phrase
         self.center = center
@@ -43,6 +50,7 @@ class Box:
     def to_detection_msg(
         self, class_dict: Dict[str, int], timestamp: Time
     ) -> Detection2D:
+        """Convert Box to ROS2 Detection2D message."""
         detection = Detection2D()
         detection.header = Header()
         # TODO(juliaj): Investigate why timestamp is sometimes rclpy.time.Time and sometimes
@@ -70,15 +78,32 @@ class Box:
 
 
 class GDBoxer:
+    """GroundingDINO detection algorithm.
+
+    Algorithm loads its own config from config_path provided by registry.
+    Example: GDBoxer(weights_path, config_path="configs/gdino_config.py")
+    """
+
     def __init__(
         self,
         weight_path: str | PathLike,
+        config_path: str | PathLike | None = None,
         use_cuda: bool = True,
     ):
+        """Initialize GDBoxer.
+
+        Args:
+            weight_path: Path to model weights file
+            config_path: Path to config file. If None, uses default location
+            use_cuda: Whether to use CUDA if available
+        """
         self.logger = logging.getLogger(__name__)
-        self.cfg_path = __file__.replace(
-            "vision_markup/boxer.py", "configs/gdino_config.py"
-        )
+        if config_path is None:
+            # Default config path for backward compatibility
+            from pathlib import Path
+
+            config_path = Path(__file__).parent.parent / "configs" / "gdino_config.py"
+        self.cfg_path = str(config_path)
         self.weight_path = str(weight_path)
         if use_cuda and torch.cuda.is_available():
             self.device = "cuda"
@@ -96,6 +121,17 @@ class GDBoxer:
         box_threshold: float,
         text_threshold: float,
     ) -> list[Box]:
+        """Detect objects in image and return bounding boxes.
+
+        Args:
+            image_msg: ROS2 Image message
+            classes: List of class names to detect
+            box_threshold: Detection confidence threshold
+            text_threshold: Text matching threshold
+
+        Returns:
+            List of Box objects with detections
+        """
         # TODO: move this to method, or use RAI canonical one
         image = self.bridge.imgmsg_to_cv2(
             image_msg, desired_encoding=image_msg.encoding
