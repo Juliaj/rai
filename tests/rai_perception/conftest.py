@@ -73,7 +73,9 @@ def mock_connector():
     def get_parameter(name):
         """Get parameter by name."""
         if name not in _parameters:
-            raise KeyError(f"Parameter '{name}' not found")
+            from rclpy.exceptions import ParameterNotDeclaredException
+
+            raise ParameterNotDeclaredException(f"Parameter '{name}' not found")
         return _parameters[name]
 
     # Mock the node with all required methods

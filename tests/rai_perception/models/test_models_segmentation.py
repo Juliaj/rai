@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from pathlib import Path
+
 import pytest
 from rai_perception.algorithms.segmenter import GDSegmenter
 from rai_perception.models.segmentation import get_model, list_available_models
@@ -23,6 +25,10 @@ def test_get_model_valid():
 
     assert AlgorithmClass is GDSegmenter
     assert config_path.endswith("seg_config.yml")
+    # Verify path is absolute (resolved) to avoid Hydra path issues
+    assert Path(config_path).is_absolute(), (
+        f"Config path should be absolute: {config_path}"
+    )
 
 
 def test_get_model_invalid_name():

@@ -50,6 +50,22 @@ class TestGetSegmentationTool:
 
         assert result == image_msg
 
+    def test_get_detection_service_name_default(
+        self, segmentation_tool, mock_connector
+    ):
+        """Test _get_detection_service_name returns default when parameter not set."""
+        # Parameter not set, so will use default
+        service_name = segmentation_tool._get_detection_service_name()
+        assert service_name == "grounding_dino_classify"
+
+    def test_get_segmentation_service_name_default(
+        self, segmentation_tool, mock_connector
+    ):
+        """Test _get_segmentation_service_name returns default when parameter not set."""
+        # Parameter not set, so will use default
+        service_name = segmentation_tool._get_segmentation_service_name()
+        assert service_name == "grounded_sam_segment"
+
     def test_call_gdino_node(self, segmentation_tool, mock_connector):
         """Test _call_gdino_node creates service call."""
         image_msg = sensor_msgs.msg.Image()
@@ -57,6 +73,7 @@ class TestGetSegmentationTool:
         mock_client.wait_for_service.return_value = True
         mock_connector.node.create_client.return_value = mock_client
 
+        # Parameter not set, so will use default service name
         future = segmentation_tool._call_gdino_node(image_msg, "dinosaur")
 
         assert future is not None
@@ -74,6 +91,7 @@ class TestGetSegmentationTool:
         mock_client.wait_for_service.return_value = True
         mock_connector.node.create_client.return_value = mock_client
 
+        # Parameter not set, so will use default service name
         future = segmentation_tool._call_gsam_node(image_msg, gdino_response)
 
         assert future is not None
@@ -95,6 +113,8 @@ class TestGetSegmentationTool:
             return mock_gsam_client
 
         mock_connector.node.create_client.side_effect = create_client_side_effect
+
+        # Service name parameters not set, so will use defaults
 
         gdino_response = RAIGroundingDino.Response()
         from rai_interfaces.msg import RAIDetectionArray
@@ -202,8 +222,23 @@ class TestGetGrabbingPointTool:
                 assert len(centroid) == 3
                 assert isinstance(rotation, (int, float))
 
+    def test_get_detection_service_name_default(self, grabbing_tool, mock_connector):
+        """Test _get_detection_service_name returns default when parameter not set."""
+        # Parameter not set, so will use default
+        service_name = grabbing_tool._get_detection_service_name()
+        assert service_name == "grounding_dino_classify"
+
+    def test_get_segmentation_service_name_default(self, grabbing_tool, mock_connector):
+        """Test _get_segmentation_service_name returns default when parameter not set."""
+        # Parameter not set, so will use default
+        service_name = grabbing_tool._get_segmentation_service_name()
+        assert service_name == "grounded_sam_segment"
+
     def test_run(self, grabbing_tool, mock_connector):
         """Test GetGrabbingPointTool._run."""
+        import rclpy
+        from rclpy.parameter import Parameter
+
         image_msg = sensor_msgs.msg.Image()
         depth_msg = sensor_msgs.msg.Image()
         camera_info = sensor_msgs.msg.CameraInfo()
@@ -226,6 +261,17 @@ class TestGetGrabbingPointTool:
             return mock_gsam_client
 
         mock_connector.node.create_client.side_effect = create_client_side_effect
+
+        # Set conversion_ratio parameter (service name parameters will use defaults)
+        mock_connector.node.set_parameters(
+            [
+                Parameter(
+                    "conversion_ratio",
+                    rclpy.parameter.Parameter.Type.DOUBLE,
+                    0.001,
+                )
+            ]
+        )
 
         gdino_response = RAIGroundingDino.Response()
         from rai_interfaces.msg import RAIDetectionArray

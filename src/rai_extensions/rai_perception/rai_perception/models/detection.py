@@ -31,6 +31,18 @@ from rai_perception.algorithms.boxer import GDBoxer
 # Registry: model_name -> (AlgorithmClass, config_path)
 # To add a new detection model, add an entry here with the model name, algorithm class, and config path.
 #
+# IMPORTANT: Config loading is model-specific. Different model libraries handle configs differently:
+# - Some accept file paths directly (e.g., GroundingDINO's Model class - see boxer.py)
+# - Some use Hydra internally (e.g., SAM2's build_sam2 function - see segmenter.py)
+# - Some may use other config systems
+#
+# When adding a new model:
+# 1. Check how the model library loads configs (file path, Hydra, etc.)
+# 2. If the library initializes its own config system (like Hydra), don't interfere - let it handle initialization
+# 3. Return the appropriate config identifier (full path, config name, etc.) based on what the library expects
+#
+# For GroundingDINO (grounding_dino): Model class accepts file paths directly, no special handling needed.
+#
 # Note: Decorator-based registration (e.g., @register_detection_model("name")) is an alternative
 # that allows classes to register themselves. Consider switching to decorators if you have many models
 # (10+) or want registration at the class definition site rather than a central registry.

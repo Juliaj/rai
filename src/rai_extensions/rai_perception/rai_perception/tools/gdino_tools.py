@@ -90,13 +90,35 @@ class GroundingDinoBaseTool(BaseTool):
         """Abstract method - must be implemented by subclasses."""
         raise NotImplementedError("Subclasses must implement _run method")
 
+    def _get_detection_service_name(self) -> str:
+        """Get detection service name from ROS2 parameter or use default.
+
+        Reads from parameter: /detection_tool/service_name
+        Default: GDINO_SERVICE_NAME ("grounding_dino_classify")
+        """
+        try:
+            service_name = self.connector.node.get_parameter(
+                "/detection_tool/service_name"
+            ).value
+            if isinstance(service_name, str) and service_name:
+                return service_name
+            self.connector.node.get_logger().warning(
+                f"Parameter /detection_tool/service_name is invalid, using default: {GDINO_SERVICE_NAME}"
+            )
+        except (ParameterUninitializedException, ParameterNotDeclaredException):
+            self.connector.node.get_logger().debug(
+                f"Parameter /detection_tool/service_name not found, using default: {GDINO_SERVICE_NAME}"
+            )
+        return GDINO_SERVICE_NAME
+
     def _call_gdino_node(
         self, camera_img_message: sensor_msgs.msg.Image, object_names: list[str]
     ) -> Future:
-        cli = self.connector.node.create_client(RAIGroundingDino, GDINO_SERVICE_NAME)
+        service_name = self._get_detection_service_name()
+        cli = self.connector.node.create_client(RAIGroundingDino, service_name)
         while not cli.wait_for_service(timeout_sec=1.0):
             self.connector.node.get_logger().info(
-                f"service {GDINO_SERVICE_NAME} not available, waiting again..."
+                f"service {service_name} not available, waiting again..."
             )
         req = RAIGroundingDino.Request()
         req.source_img = camera_img_message

@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from rai.tools.ros2.base import BaseROS2Tool
 from rai.tools.timeout import RaiTimeoutError, timeout
 
-from rai_perception.components.pcl_detection import (
+from rai_perception.components.gripping_points import (
     GrippingPointEstimator,
     GrippingPointEstimatorConfig,
     PointCloudFilter,

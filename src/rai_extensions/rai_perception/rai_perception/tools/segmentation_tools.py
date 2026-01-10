@@ -33,7 +33,8 @@ from rclpy.exceptions import (
 )
 
 from rai_interfaces.srv import RAIGroundedSam, RAIGroundingDino
-from rai_perception import GDINO_SERVICE_NAME
+from rai_perception import GDINO_SERVICE_NAME, GSAM_SERVICE_NAME
+from rai_perception.algorithms.point_cloud import depth_to_point_cloud
 
 # --------------------- Inputs ---------------------
 
@@ -78,6 +79,48 @@ class GetSegmentationTool:
 
     args_schema: Type[GetSegmentationInput] = GetSegmentationInput
 
+    def _get_detection_service_name(self) -> str:
+        """Get detection service name from ROS2 parameter or use default.
+
+        Reads from parameter: /detection_tool/service_name
+        Default: GDINO_SERVICE_NAME ("grounding_dino_classify")
+        """
+        try:
+            service_name = self.connector.node.get_parameter(
+                "/detection_tool/service_name"
+            ).value
+            if isinstance(service_name, str) and service_name:
+                return service_name
+            self.connector.node.get_logger().warning(
+                f"Parameter /detection_tool/service_name is invalid, using default: {GDINO_SERVICE_NAME}"
+            )
+        except (ParameterUninitializedException, ParameterNotDeclaredException):
+            self.connector.node.get_logger().debug(
+                f"Parameter /detection_tool/service_name not found, using default: {GDINO_SERVICE_NAME}"
+            )
+        return GDINO_SERVICE_NAME
+
+    def _get_segmentation_service_name(self) -> str:
+        """Get segmentation service name from ROS2 parameter or use default.
+
+        Reads from parameter: /segmentation_tool/service_name
+        Default: GSAM_SERVICE_NAME ("grounded_sam_segment")
+        """
+        try:
+            service_name = self.connector.node.get_parameter(
+                "/segmentation_tool/service_name"
+            ).value
+            if isinstance(service_name, str) and service_name:
+                return service_name
+            self.connector.node.get_logger().warning(
+                f"Parameter /segmentation_tool/service_name is invalid, using default: {GSAM_SERVICE_NAME}"
+            )
+        except (ParameterUninitializedException, ParameterNotDeclaredException):
+            self.connector.node.get_logger().debug(
+                f"Parameter /segmentation_tool/service_name not found, using default: {GSAM_SERVICE_NAME}"
+            )
+        return GSAM_SERVICE_NAME
+
     def _get_gdino_response(
         self, future: Future
     ) -> Optional[RAIGroundingDino.Response]:
@@ -96,10 +139,11 @@ class GetSegmentationTool:
     def _call_gdino_node(
         self, camera_img_message: sensor_msgs.msg.Image, object_name: str
     ) -> Future:
-        cli = self.connector.node.create_client(RAIGroundingDino, GDINO_SERVICE_NAME)
+        service_name = self._get_detection_service_name()
+        cli = self.connector.node.create_client(RAIGroundingDino, service_name)
         while not cli.wait_for_service(timeout_sec=1.0):
             self.connector.node.get_logger().info(
-                f"service {GDINO_SERVICE_NAME} not available, waiting again..."
+                f"service {service_name} not available, waiting again..."
             )
         req = RAIGroundingDino.Request()
         req.source_img = camera_img_message
@@ -113,10 +157,11 @@ class GetSegmentationTool:
     def _call_gsam_node(
         self, camera_img_message: sensor_msgs.msg.Image, data: RAIGroundingDino.Response
     ):
-        cli = self.connector.node.create_client(RAIGroundedSam, "grounded_sam_segment")
+        service_name = self._get_segmentation_service_name()
+        cli = self.connector.node.create_client(RAIGroundedSam, service_name)
         while not cli.wait_for_service(timeout_sec=1.0):
             self.connector.node.get_logger().info(
-                "service grounded_sam_segment not available, waiting again..."
+                f"service {service_name} not available, waiting again..."
             )
         req = RAIGroundedSam.Request()
         req.detections = data.detections
@@ -167,33 +212,6 @@ class GetSegmentationTool:
         return "", {"segmentations": ret}
 
 
-def depth_to_point_cloud(
-    depth_image: np.ndarray, fx: float, fy: float, cx: float, cy: float
-):
-    height, width = depth_image.shape
-
-    # Create grid of pixel coordinates
-    x = np.arange(width)
-    y = np.arange(height)
-    x_grid, y_grid = np.meshgrid(x, y)
-
-    # Calculate 3D coordinates
-    z = depth_image
-    x = (x_grid - cx) * z / fx
-    y = (y_grid - cy) * z / fy
-
-    # Stack the coordinates
-    points = np.stack((x, y, z), axis=-1)
-
-    # Reshape to a list of points
-    points = points.reshape(-1, 3)
-
-    # Remove points with zero depth
-    points = points[points[:, 2] > 0]
-
-    return points
-
-
 class GetGrabbingPointTool(BaseTool):
     connector: ROS2Connector = Field(..., exclude=True)
 
@@ -204,6 +222,48 @@ class GetGrabbingPointTool(BaseTool):
     args_schema: Type[GetGrabbingPointInput] = GetGrabbingPointInput
     box_threshold: float = Field(default=0.35, description="Box threshold for GDINO")
     text_threshold: float = Field(default=0.45, description="Text threshold for GDINO")
+
+    def _get_detection_service_name(self) -> str:
+        """Get detection service name from ROS2 parameter or use default.
+
+        Reads from parameter: /detection_tool/service_name
+        Default: GDINO_SERVICE_NAME ("grounding_dino_classify")
+        """
+        try:
+            service_name = self.connector.node.get_parameter(
+                "/detection_tool/service_name"
+            ).value
+            if isinstance(service_name, str) and service_name:
+                return service_name
+            self.connector.node.get_logger().warning(
+                f"Parameter /detection_tool/service_name is invalid, using default: {GDINO_SERVICE_NAME}"
+            )
+        except (ParameterUninitializedException, ParameterNotDeclaredException):
+            self.connector.node.get_logger().debug(
+                f"Parameter /detection_tool/service_name not found, using default: {GDINO_SERVICE_NAME}"
+            )
+        return GDINO_SERVICE_NAME
+
+    def _get_segmentation_service_name(self) -> str:
+        """Get segmentation service name from ROS2 parameter or use default.
+
+        Reads from parameter: /segmentation_tool/service_name
+        Default: GSAM_SERVICE_NAME ("grounded_sam_segment")
+        """
+        try:
+            service_name = self.connector.node.get_parameter(
+                "/segmentation_tool/service_name"
+            ).value
+            if isinstance(service_name, str) and service_name:
+                return service_name
+            self.connector.node.get_logger().warning(
+                f"Parameter /segmentation_tool/service_name is invalid, using default: {GSAM_SERVICE_NAME}"
+            )
+        except (ParameterUninitializedException, ParameterNotDeclaredException):
+            self.connector.node.get_logger().debug(
+                f"Parameter /segmentation_tool/service_name not found, using default: {GSAM_SERVICE_NAME}"
+            )
+        return GSAM_SERVICE_NAME
 
     def _get_gdino_response(
         self, future: Future
@@ -223,10 +283,11 @@ class GetGrabbingPointTool(BaseTool):
     def _call_gdino_node(
         self, camera_img_message: sensor_msgs.msg.Image, object_name: str
     ) -> Future:
-        cli = self.connector.node.create_client(RAIGroundingDino, GDINO_SERVICE_NAME)
+        service_name = self._get_detection_service_name()
+        cli = self.connector.node.create_client(RAIGroundingDino, service_name)
         while not cli.wait_for_service(timeout_sec=1.0):
             self.connector.node.get_logger().info(
-                "service not available, waiting again..."
+                f"service {service_name} not available, waiting again..."
             )
         req = RAIGroundingDino.Request()
         req.source_img = camera_img_message
@@ -240,10 +301,11 @@ class GetGrabbingPointTool(BaseTool):
     def _call_gsam_node(
         self, camera_img_message: sensor_msgs.msg.Image, data: RAIGroundingDino.Response
     ):
-        cli = self.connector.node.create_client(RAIGroundedSam, "grounded_sam_segment")
+        service_name = self._get_segmentation_service_name()
+        cli = self.connector.node.create_client(RAIGroundedSam, service_name)
         while not cli.wait_for_service(timeout_sec=1.0):
             self.connector.node.get_logger().info(
-                "service not available, waiting again..."
+                f"service {service_name} not available, waiting again..."
             )
         req = RAIGroundedSam.Request()
         req.detections = data.detections

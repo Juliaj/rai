@@ -33,13 +33,13 @@ from cv_bridge import CvBridge
 from rai.communication.ros2 import wait_for_ros2_services, wait_for_ros2_topics
 from rai.communication.ros2.connectors import ROS2Connector
 from rai_perception import GetObjectGrippingPointsTool
-from rai_perception.components.pcl_detection import (
+from rai_perception.components.gripping_points import (
     GrippingPointEstimatorConfig,
     PointCloudFilterConfig,
     PointCloudFromSegmentationConfig,
     _publish_gripping_point_debug_data,
 )
-from rai_perception.tools.pcl_detection_tools import PCL_DETECTION_PARAM_PREFIX
+from rai_perception.tools.gripping_points_tools import PCL_DETECTION_PARAM_PREFIX
 
 
 def draw_points_on_image(image_msg, points, camera_info):

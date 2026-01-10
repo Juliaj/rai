@@ -31,13 +31,27 @@ from rai_perception.algorithms.segmenter import GDSegmenter
 # Registry: model_name -> (AlgorithmClass, config_path)
 # To add a new segmentation model, add an entry here with the model name, algorithm class, and config path.
 #
+# IMPORTANT: Config loading is model-specific. Different model libraries handle configs differently:
+# - Some accept file paths directly (e.g., GroundingDINO's Model class)
+# - Some use Hydra internally (e.g., SAM2's build_sam2 function)
+# - Some may use other config systems
+#
+# When adding a new model:
+# 1. Check how the model library loads configs (file path, Hydra, etc.)
+# 2. If the library initializes its own config system (like Hydra), don't interfere - let it handle initialization
+# 3. Return the appropriate config identifier (full path, config name, etc.) based on what the library expects
+#
+# For SAM2 (grounded_sam): build_sam2 internally uses Hydra and handles its own initialization.
+# We pass the full path and let build_sam2 handle Hydra setup. Do NOT initialize Hydra in the algorithm
+# class as it conflicts with build_sam2's internal Hydra initialization.
+#
 # Note: Decorator-based registration (e.g., @register_segmentation_model("name")) is an alternative
 # that allows classes to register themselves. Consider switching to decorators if you have many models
 # (10+) or want registration at the class definition site rather than a central registry.
 _SEGMENTATION_REGISTRY: dict[str, Tuple[Type, str]] = {
     "grounded_sam": (
         GDSegmenter,
-        str(Path(__file__).parent.parent / "configs" / "seg_config.yml"),
+        str((Path(__file__).parent.parent / "configs" / "seg_config.yml").resolve()),
     ),
 }
 
@@ -50,6 +64,8 @@ def get_model(name: str) -> Tuple[Type, str]:
 
     Returns:
         Tuple of (AlgorithmClass, config_path)
+        - config_path is typically a full file path, but format depends on the model library
+        - See registry comments for model-specific config loading requirements
 
     Raises:
         ValueError: If model name not found in registry

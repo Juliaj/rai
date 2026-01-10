@@ -75,6 +75,32 @@ class TestGroundingDinoBaseTool:
 
         assert result == image_msg
 
+    def test_get_detection_service_name_default(self, base_tool, mock_connector):
+        """Test _get_detection_service_name returns default when parameter not set."""
+        # Parameter not set, so get_parameter will raise ParameterNotDeclaredException
+        # which is already handled by the mock_connector fixture
+        service_name = base_tool._get_detection_service_name()
+        assert service_name == "grounding_dino_classify"
+
+    def test_get_detection_service_name_from_param(self, base_tool, mock_connector):
+        """Test _get_detection_service_name reads from ROS2 parameter."""
+        import rclpy
+        from rclpy.parameter import Parameter
+
+        # Set the parameter
+        mock_connector.node.set_parameters(
+            [
+                Parameter(
+                    "/detection_tool/service_name",
+                    rclpy.parameter.Parameter.Type.STRING,
+                    "/custom/detection_service",
+                )
+            ]
+        )
+
+        service_name = base_tool._get_detection_service_name()
+        assert service_name == "/custom/detection_service"
+
     def test_call_gdino_node(self, base_tool, mock_connector):
         """Test _call_gdino_node creates service call."""
         image_msg = sensor_msgs.msg.Image()
@@ -82,6 +108,7 @@ class TestGroundingDinoBaseTool:
         mock_client.wait_for_service.return_value = True
         mock_connector.node.create_client.return_value = mock_client
 
+        # Parameter not set, so will use default service name
         future = base_tool._call_gdino_node(image_msg, ["dinosaur", "dragon"])
 
         assert future is not None
@@ -157,6 +184,8 @@ class TestGetDetectionTool:
         mock_future = MagicMock()
         mock_client.call_async.return_value = mock_future
 
+        # Parameter not set, so will use default service name
+
         response = RAIGroundingDino.Response()
         from vision_msgs.msg import (
             BoundingBox2D,
@@ -224,6 +253,9 @@ class TestGetDistanceToObjectsTool:
 
     def test_get_distance_tool_run(self, distance_tool, mock_connector):
         """Test GetDistanceToObjectsTool._run."""
+        import rclpy
+        from rclpy.parameter import Parameter
+
         image_msg = sensor_msgs.msg.Image()
         depth_msg = sensor_msgs.msg.Image()
         mock_connector.receive_message.side_effect = [
@@ -236,9 +268,6 @@ class TestGetDistanceToObjectsTool:
         mock_connector.node.create_client.return_value = mock_client
 
         # Set ROS2 parameters
-        import rclpy
-        from rclpy.parameter import Parameter
-
         mock_connector.node.set_parameters(
             [
                 Parameter(
@@ -251,6 +280,9 @@ class TestGetDistanceToObjectsTool:
                 ),
             ]
         )
+
+        # Service name parameter not set, so will use default
+        # Other parameters are already set via set_parameters above
 
         response = RAIGroundingDino.Response()
         from vision_msgs.msg import (
