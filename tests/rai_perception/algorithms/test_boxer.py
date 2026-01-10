@@ -9,18 +9,14 @@
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the specific language governing permissions and
+# See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
-from unittest.mock import MagicMock, patch
-
-import numpy as np
-import rclpy
 from rai_perception.algorithms.boxer import Box, GDBoxer
 from rclpy.time import Time
-from sensor_msgs.msg import Image
 from vision_msgs.msg import Detection2D
+
+from tests.rai_perception.algorithms.test_base_boxer import TestGDBoxerBase
 
 
 class TestBox:
@@ -55,142 +51,18 @@ class TestBox:
         assert detection.header.stamp == timestamp.to_msg()
 
 
-class TestGDBoxer:
-    """Test cases for GDBoxer class."""
+class TestGDBoxer(TestGDBoxerBase):
+    """Test cases for algorithms.boxer.GDBoxer class."""
 
-    def setup_method(self):
-        """Initialize ROS2 before tests that use Time() or ROS2 messages."""
-        if not rclpy.ok():
-            rclpy.init()
+    def get_boxer_class(self):
+        """Return the GDBoxer class from algorithms."""
+        return GDBoxer
 
-    def teardown_method(self):
-        """Clean up ROS2 context after each test to prevent thread exceptions."""
-        try:
-            if rclpy.ok():
-                # Give any executor threads a moment to finish before shutting down
-                time.sleep(0.1)
-                rclpy.shutdown()
-        except Exception:
-            # Ignore errors during shutdown - thread may have already been cleaned up
-            pass
-
-    def _create_test_weights_file(self, tmp_path):
-        """Helper to create a test weights file."""
-        weights_path = tmp_path / "weights.pth"
-        weights_path.parent.mkdir(parents=True, exist_ok=True)
-        weights_path.write_bytes(b"test")
-        return weights_path
-
-    @staticmethod
-    def _create_mock_image_array():
-        """Helper to create a mock image array for testing."""
-        return np.zeros((100, 100, 3), dtype=np.uint8)
-
-    def test_gdboxer_initialization(self, tmp_path):
-        """Test GDBoxer initialization with use_cuda=True to verify model is always initialized."""
-        weights_path = self._create_test_weights_file(tmp_path)
-
-        with patch("rai_perception.algorithms.boxer.Model") as mock_model:
-            mock_model_instance = MagicMock()
-            mock_model.return_value = mock_model_instance
-
-            boxer = GDBoxer(str(weights_path), use_cuda=True)
-
-            assert boxer.weight_path == str(weights_path)
-            assert hasattr(boxer, "model")
-            assert boxer.model == mock_model_instance
-            mock_model.assert_called_once()
-
-    def test_gdboxer_initialization_use_cuda_false(self, tmp_path):
-        """Test GDBoxer initialization with use_cuda=False to verify CPU device selection."""
-        weights_path = self._create_test_weights_file(tmp_path)
-
-        with (
-            patch("rai_perception.algorithms.boxer.Model") as mock_model,
-            patch(
-                "rai_perception.algorithms.boxer.logging.getLogger"
-            ) as mock_get_logger,
-        ):
-            mock_model_instance = MagicMock()
-            mock_model.return_value = mock_model_instance
-
-            mock_logger = MagicMock()
-            mock_get_logger.return_value = mock_logger
-
-            boxer = GDBoxer(str(weights_path), use_cuda=False)
-
-            assert boxer.device == "cpu"
-            assert boxer.weight_path == str(weights_path)
-            assert hasattr(boxer, "model")
-            assert boxer.model == mock_model_instance
-            mock_model.assert_called_once_with(
-                boxer.cfg_path, boxer.weight_path, device="cpu"
-            )
-            mock_logger.warning.assert_not_called()
-
-    def test_gdboxer_get_boxes(self, tmp_path):
-        """Test GDBoxer get_boxes method with use_cuda=True to verify model is initialized."""
-        weights_path = self._create_test_weights_file(tmp_path)
-
-        with (
-            patch("rai_perception.algorithms.boxer.Model") as mock_model,
-            patch("rai_perception.algorithms.boxer.CvBridge") as mock_bridge,
-        ):
-            mock_model_instance = MagicMock()
-            mock_model.return_value = mock_model_instance
-
-            # Mock predictions
-            mock_predictions = MagicMock()
-            mock_predictions.xyxy = [[10, 10, 50, 50], [60, 60, 90, 90]]
-            mock_predictions.class_id = [0, 1]
-            mock_predictions.confidence = [0.9, 0.8]
-            mock_model_instance.predict_with_classes.return_value = mock_predictions
-
-            # Mock bridge
-            mock_bridge_instance = MagicMock()
-            mock_bridge.return_value = mock_bridge_instance
-            mock_bridge_instance.imgmsg_to_cv2.return_value = (
-                self._create_mock_image_array()
-            )
-
-            boxer = GDBoxer(str(weights_path), use_cuda=True)
-
-            assert hasattr(boxer, "model")
-            image_msg = Image()
-            classes = ["dinosaur", "dragon"]
-            boxes = boxer.get_boxes(image_msg, classes, 0.4, 0.4)
-
-            assert len(boxes) == 2
-            assert boxes[0].phrase == "dinosaur"
-            assert boxes[0].confidence == 0.9
-            assert boxes[1].phrase == "dragon"
-            assert boxes[1].confidence == 0.8
-
-    def test_gdboxer_get_boxes_empty(self, tmp_path):
-        """Test GDBoxer get_boxes with no detections."""
-        weights_path = self._create_test_weights_file(tmp_path)
-
-        with (
-            patch("rai_perception.algorithms.boxer.Model") as mock_model,
-            patch("rai_perception.algorithms.boxer.CvBridge") as mock_bridge,
-        ):
-            mock_model_instance = MagicMock()
-            mock_model.return_value = mock_model_instance
-
-            mock_predictions = MagicMock()
-            mock_predictions.xyxy = []
-            mock_model_instance.predict_with_classes.return_value = mock_predictions
-
-            mock_bridge_instance = MagicMock()
-            mock_bridge.return_value = mock_bridge_instance
-            mock_bridge_instance.imgmsg_to_cv2.return_value = (
-                self._create_mock_image_array()
-            )
-
-            boxer = GDBoxer(str(weights_path), use_cuda=False)
-
-            image_msg = Image()
-            classes = ["dinosaur"]
-            boxes = boxer.get_boxes(image_msg, classes, 0.4, 0.4)
-
-            assert len(boxes) == 0
+    def get_patch_path(self, target):
+        """Return patch path for algorithms module."""
+        patch_map = {
+            "Model": "rai_perception.algorithms.boxer.Model",
+            "CvBridge": "rai_perception.algorithms.boxer.CvBridge",
+            "logging.getLogger": "rai_perception.algorithms.boxer.logging.getLogger",
+        }
+        return patch_map[target]

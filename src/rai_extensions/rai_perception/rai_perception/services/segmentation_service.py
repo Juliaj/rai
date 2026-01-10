@@ -23,7 +23,7 @@ from typing import Optional
 
 import numpy as np
 from cv_bridge import CvBridge
-from rai.communication.ros2 import ROS2Connector, get_param_value
+from rai.communication.ros2 import ROS2Connector
 
 from rai_interfaces.srv import RAIGroundedSam
 from rai_perception.models.segmentation import get_model
@@ -54,33 +54,24 @@ class SegmentationService(BaseVisionService):
     ):
         # TODO: After agents are deprecated, make ros2_connector a required parameter
         super().__init__(weights_root_path, ros2_name, ros2_connector=ros2_connector)
+        self._bridge = CvBridge()
         self._initialize_model()
 
     def _initialize_model(self):
         """Initialize segmentation model from registry based on ROS2 parameter."""
-        model_name = get_param_value(
-            self.ros2_connector.node, "model_name", default="grounded_sam"
+        self._segmenter, _ = self._initialize_model_from_registry(
+            get_model, "grounded_sam", "segmentation"
         )
-        AlgorithmClass, config_path = get_model(model_name)
-        self.logger.info(
-            f"Loading segmentation model '{model_name}' (config: {config_path})"
-        )
-        self._segmenter = self._load_model_with_error_handling(
-            AlgorithmClass, config_path
-        )
-        self.logger.info(f"SegmentationService initialized with model '{model_name}'")
 
     def run(self):
         """Start the ROS2 service."""
-        service_name = get_param_value(
-            self.ros2_connector.node, "service_name", default="/segmentation"
-        )
-        self.ros2_connector.create_service(
+        service_name = self._get_service_name("/segmentation")
+        self._create_service(
             service_name,
             self._segment_callback,
-            service_type="rai_interfaces/srv/RAIGroundedSam",
+            "rai_interfaces/srv/RAIGroundedSam",
+            "Segmentation",
         )
-        self.logger.info(f"Segmentation service started at '{service_name}'")
 
     def _segment_callback(self, request, response: RAIGroundedSam.Response):
         """Handle segmentation service requests."""
@@ -92,13 +83,12 @@ class SegmentationService(BaseVisionService):
 
         assert self._segmenter is not None
         masks = self._segmenter.get_segmentation(image, received_boxes)
-        bridge = CvBridge()
         img_arr = []
         for mask in masks:
             if len(mask.shape) > 2:
                 mask = np.squeeze(mask)
             arr = (mask * 255).astype(np.uint8)
-            img_arr.append(bridge.cv2_to_imgmsg(arr, encoding="mono8"))
+            img_arr.append(self._bridge.cv2_to_imgmsg(arr, encoding="mono8"))
 
         response.masks = img_arr
         return response

@@ -21,7 +21,7 @@ to dynamically load the appropriate detection algorithm.
 from pathlib import Path
 from typing import Optional
 
-from rai.communication.ros2 import ROS2Connector, get_param_value
+from rai.communication.ros2 import ROS2Connector
 
 from rai_interfaces.msg import RAIDetectionArray
 from rai_perception.models.detection import get_model
@@ -54,27 +54,19 @@ class DetectionService(BaseVisionService):
 
     def _initialize_model(self):
         """Initialize detection model from registry based on ROS2 parameter."""
-        model_name = get_param_value(
-            self.ros2_connector.node, "model_name", default="grounding_dino"
+        self._boxer, _ = self._initialize_model_from_registry(
+            get_model, "grounding_dino", "detection"
         )
-        AlgorithmClass, config_path = get_model(model_name)
-        self.logger.info(
-            f"Loading detection model '{model_name}' (config: {config_path})"
-        )
-        self._boxer = self._load_model_with_error_handling(AlgorithmClass, config_path)
-        self.logger.info(f"DetectionService initialized with model '{model_name}'")
 
     def run(self):
         """Start the ROS2 service."""
-        service_name = get_param_value(
-            self.ros2_connector.node, "service_name", default="/detection"
-        )
-        self.ros2_connector.create_service(
+        service_name = self._get_service_name("/detection")
+        self._create_service(
             service_name,
             self._classify_callback,
-            service_type="rai_interfaces/srv/RAIGroundingDino",
+            "rai_interfaces/srv/RAIGroundingDino",
+            "Detection",
         )
-        self.logger.info(f"Detection service started at '{service_name}'")
 
     def _classify_callback(self, request, response: RAIDetectionArray):
         """Handle detection service requests."""

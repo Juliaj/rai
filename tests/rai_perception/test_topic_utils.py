@@ -68,9 +68,11 @@ class TestWaitForPerceptionDependencies:
             # Mock the wait functions to verify they're called with correct values
             with (
                 patch(
-                    "rai_perception.utils.wait_for_ros2_services"
+                    "rai_perception.components.topic_utils.wait_for_ros2_services"
                 ) as mock_wait_services,
-                patch("rai_perception.utils.wait_for_ros2_topics") as mock_wait_topics,
+                patch(
+                    "rai_perception.components.topic_utils.wait_for_ros2_topics"
+                ) as mock_wait_topics,
             ):
                 wait_for_perception_dependencies(connector, tools)
 
@@ -167,9 +169,11 @@ class TestWaitForPerceptionDependencies:
             # Should work - finds perception tool in the list
             with (
                 patch(
-                    "rai_perception.utils.wait_for_ros2_services"
+                    "rai_perception.components.topic_utils.wait_for_ros2_services"
                 ) as mock_wait_services,
-                patch("rai_perception.utils.wait_for_ros2_topics") as mock_wait_topics,
+                patch(
+                    "rai_perception.components.topic_utils.wait_for_ros2_topics"
+                ) as mock_wait_topics,
             ):
                 wait_for_perception_dependencies(connector, tools)
 

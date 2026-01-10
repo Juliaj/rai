@@ -77,5 +77,66 @@ class BaseVisionService:
             model_class, self.weights_path, self.logger, self.WEIGHTS_URL, config_path
         )
 
+    def _initialize_model_from_registry(
+        self, get_model_func, default_model_name: str, model_type_name: str
+    ):
+        """Initialize model from registry based on ROS2 parameter.
+
+        Args:
+            get_model_func: Function that takes model name and returns (AlgorithmClass, config_path)
+            default_model_name: Default model name if ROS2 parameter not set
+            model_type_name: Type name for logging (e.g., "detection", "segmentation")
+
+        Returns:
+            Tuple of (model_instance, model_name)
+        """
+        from rai.communication.ros2 import get_param_value
+
+        model_name = get_param_value(
+            self.ros2_connector.node, "model_name", default=default_model_name
+        )
+        AlgorithmClass, config_path = get_model_func(model_name)
+        self.logger.info(
+            f"Loading {model_type_name} model '{model_name}' (config: {config_path})"
+        )
+        model_instance = self._load_model_with_error_handling(
+            AlgorithmClass, config_path
+        )
+        self.logger.info(
+            f"{self.__class__.__name__} initialized with model '{model_name}'"
+        )
+        return model_instance, model_name
+
+    def _get_service_name(self, default_service_name: str) -> str:
+        """Get service name from ROS2 parameter or use default.
+
+        Args:
+            default_service_name: Default service name if parameter not set
+
+        Returns:
+            Service name string
+        """
+        from rai.communication.ros2 import get_param_value
+
+        return get_param_value(
+            self.ros2_connector.node, "service_name", default=default_service_name
+        )
+
+    def _create_service(
+        self, service_name: str, callback, service_type: str, service_type_name: str
+    ):
+        """Create ROS2 service and log startup.
+
+        Args:
+            service_name: ROS2 service name
+            callback: Service callback function
+            service_type: ROS2 service type string
+            service_type_name: Human-readable service type name for logging
+        """
+        self.ros2_connector.create_service(
+            service_name, callback, service_type=service_type
+        )
+        self.logger.info(f"{service_type_name} service started at '{service_name}'")
+
     def stop(self):
         self.ros2_connector.shutdown()

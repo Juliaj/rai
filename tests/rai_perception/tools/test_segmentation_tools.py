@@ -77,6 +77,8 @@ class TestGetSegmentationTool:
         future = segmentation_tool._call_gdino_node(image_msg, "dinosaur")
 
         assert future is not None
+        mock_connector.node.create_client.assert_called_once()
+        mock_client.wait_for_service.assert_called_once()
         mock_client.call_async.assert_called_once()
 
     def test_call_gsam_node(self, segmentation_tool, mock_connector):
@@ -95,6 +97,8 @@ class TestGetSegmentationTool:
         future = segmentation_tool._call_gsam_node(image_msg, gdino_response)
 
         assert future is not None
+        mock_connector.node.create_client.assert_called_once()
+        mock_client.wait_for_service.assert_called_once()
         mock_client.call_async.assert_called_once()
 
     def test_run_success(self, segmentation_tool, mock_connector):

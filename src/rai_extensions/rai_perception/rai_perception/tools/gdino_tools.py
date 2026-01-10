@@ -90,26 +90,10 @@ class GroundingDinoBaseTool(BaseTool):
         raise NotImplementedError("Subclasses must implement _run method")
 
     def _get_detection_service_name(self) -> str:
-        """Get detection service name from ROS2 parameter or use default.
+        """Get detection service name from ROS2 parameter or use default."""
+        from rai_perception.components.service_utils import get_detection_service_name
 
-        Reads from parameter: /detection_tool/service_name
-        Default: "/detection" (generic, model-agnostic)
-        """
-        default_service = "/detection"
-        try:
-            service_name = self.connector.node.get_parameter(
-                "/detection_tool/service_name"
-            ).value
-            if isinstance(service_name, str) and service_name:
-                return service_name
-            self.connector.node.get_logger().warning(
-                f"Parameter /detection_tool/service_name is invalid, using default: {default_service}"
-            )
-        except (ParameterUninitializedException, ParameterNotDeclaredException):
-            self.connector.node.get_logger().debug(
-                f"Parameter /detection_tool/service_name not found, using default: {default_service}"
-            )
-        return default_service
+        return get_detection_service_name(self.connector)
 
     @property
     def service_name(self) -> str:
@@ -119,20 +103,17 @@ class GroundingDinoBaseTool(BaseTool):
     def _call_gdino_node(
         self, camera_img_message: sensor_msgs.msg.Image, object_names: list[str]
     ) -> Future:
+        from rai_perception.components.service_utils import create_service_client
+
         service_name = self._get_detection_service_name()
-        cli = self.connector.node.create_client(RAIGroundingDino, service_name)
-        while not cli.wait_for_service(timeout_sec=1.0):
-            self.connector.node.get_logger().info(
-                f"service {service_name} not available, waiting again..."
-            )
+        cli = create_service_client(self.connector, RAIGroundingDino, service_name)
         req = RAIGroundingDino.Request()
         req.source_img = camera_img_message
         req.classes = " , ".join(object_names)
         req.box_threshold = self.box_threshold
         req.text_threshold = self.text_threshold
 
-        future = cli.call_async(req)
-        return future
+        return cli.call_async(req)
 
     def get_img_from_topic(self, topic: str, timeout_sec: int = 2):
         msg = self.connector.receive_message(topic, timeout_sec=timeout_sec).payload

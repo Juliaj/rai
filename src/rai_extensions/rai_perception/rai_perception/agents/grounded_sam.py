@@ -16,11 +16,9 @@
 import warnings
 from pathlib import Path
 
-import rclpy
 from rai.agents import BaseAgent
-from rai.communication.ros2 import ROS2Connector
-from rclpy.parameter import Parameter
 
+from rai_perception.agents._helpers import create_service_wrapper
 from rai_perception.services.segmentation_service import SegmentationService
 
 GSAM_NODE_NAME = "grounded_sam"
@@ -57,26 +55,12 @@ class GroundedSamAgent(BaseAgent):
         )
         super().__init__()
 
-        # Create ROS2 connector to set parameters before service initialization
-        self.ros2_connector = ROS2Connector(ros2_name, executor_type="single_threaded")
-
-        # Set ROS2 parameters for the service
-        self.ros2_connector.node.set_parameters(
-            [
-                Parameter(
-                    "model_name", rclpy.parameter.Parameter.Type.STRING, "grounded_sam"
-                ),
-                Parameter(
-                    "service_name",
-                    rclpy.parameter.Parameter.Type.STRING,
-                    GSAM_SERVICE_NAME,
-                ),
-            ]
-        )
-
-        # Create service instance with shared connector (it will read the parameters we just set)
-        self._service = SegmentationService(
-            weights_root_path, ros2_name, ros2_connector=self.ros2_connector
+        self.ros2_connector, self._service = create_service_wrapper(
+            SegmentationService,
+            ros2_name,
+            "grounded_sam",
+            GSAM_SERVICE_NAME,
+            weights_root_path,
         )
         self.logger = self._service.logger
 

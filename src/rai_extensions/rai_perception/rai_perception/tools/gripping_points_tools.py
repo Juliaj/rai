@@ -27,7 +27,10 @@ from rai_perception.components.gripping_points import (
     PointCloudFromSegmentation,
     PointCloudFromSegmentationConfig,
 )
-from rai_perception.utils import _suggest_topic_match, discover_camera_topics
+from rai_perception.components.topic_utils import (
+    _suggest_topic_match,
+    discover_camera_topics,
+)
 
 # Parameter prefix for ROS2 configuration
 GRIPPING_POINTS_TOOL_PARAM_PREFIX = "perception.gripping_points"

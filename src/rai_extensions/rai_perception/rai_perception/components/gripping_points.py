@@ -24,10 +24,6 @@ from rai.communication.ros2.api import (
 from rai.communication.ros2.connectors import ROS2Connector
 from rai.communication.ros2.ros_async import get_future_result
 from rclpy import Future
-from rclpy.exceptions import (
-    ParameterNotDeclaredException,
-    ParameterUninitializedException,
-)
 
 from rai_interfaces.srv import RAIGroundedSam, RAIGroundingDino
 from rai_perception.algorithms.point_cloud import depth_to_point_cloud
@@ -234,58 +230,26 @@ class PointCloudFromSegmentation:
         return fx, fy, cx, cy
 
     def _get_detection_service_name(self) -> str:
-        """Get detection service name from ROS2 parameter or use default.
+        """Get detection service name from ROS2 parameter or use default."""
+        from rai_perception.components.service_utils import get_detection_service_name
 
-        Reads from parameter: /detection_tool/service_name
-        Default: "/detection" (generic, model-agnostic)
-        """
-        default_service = "/detection"
-        try:
-            service_name = self.connector.node.get_parameter(
-                "/detection_tool/service_name"
-            ).value
-            if isinstance(service_name, str) and service_name:
-                return service_name
-            self.connector.node.get_logger().warning(  # type: ignore[reportUnknownMemberType]
-                f"Parameter /detection_tool/service_name is invalid, using default: {default_service}"
-            )
-        except (ParameterUninitializedException, ParameterNotDeclaredException):
-            self.connector.node.get_logger().debug(  # type: ignore[reportUnknownMemberType]
-                f"Parameter /detection_tool/service_name not found, using default: {default_service}"
-            )
-        return default_service
+        return get_detection_service_name(self.connector)
 
     def _get_segmentation_service_name(self) -> str:
-        """Get segmentation service name from ROS2 parameter or use default.
+        """Get segmentation service name from ROS2 parameter or use default."""
+        from rai_perception.components.service_utils import (
+            get_segmentation_service_name,
+        )
 
-        Reads from parameter: /segmentation_tool/service_name
-        Default: "/segmentation" (generic, model-agnostic)
-        """
-        default_service = "/segmentation"
-        try:
-            service_name = self.connector.node.get_parameter(
-                "/segmentation_tool/service_name"
-            ).value
-            if isinstance(service_name, str) and service_name:
-                return service_name
-            self.connector.node.get_logger().warning(  # type: ignore[reportUnknownMemberType]
-                f"Parameter /segmentation_tool/service_name is invalid, using default: {default_service}"
-            )
-        except (ParameterUninitializedException, ParameterNotDeclaredException):
-            self.connector.node.get_logger().debug(  # type: ignore[reportUnknownMemberType]
-                f"Parameter /segmentation_tool/service_name not found, using default: {default_service}"
-            )
-        return default_service
+        return get_segmentation_service_name(self.connector)
 
     def _call_gdino_node(
         self, camera_img_message: sensor_msgs.msg.Image, object_name: str
     ) -> Future:
+        from rai_perception.components.service_utils import create_service_client
+
         service_name = self._get_detection_service_name()
-        cli = self.connector.node.create_client(RAIGroundingDino, service_name)  # type: ignore[reportUnknownMemberType]
-        while not cli.wait_for_service(timeout_sec=1.0):
-            self.connector.node.get_logger().info(  # type: ignore[reportUnknownMemberType]
-                f"service {service_name} not available, waiting again..."
-            )
+        cli = create_service_client(self.connector, RAIGroundingDino, service_name)  # type: ignore[reportUnknownMemberType]
         req = RAIGroundingDino.Request()
         req.source_img = camera_img_message
         req.classes = object_name
@@ -296,12 +260,10 @@ class PointCloudFromSegmentation:
     def _call_gsam_node(
         self, camera_img_message: sensor_msgs.msg.Image, data: RAIGroundingDino.Response
     ) -> Future:
+        from rai_perception.components.service_utils import create_service_client
+
         service_name = self._get_segmentation_service_name()
-        cli = self.connector.node.create_client(RAIGroundedSam, service_name)  # type: ignore[reportUnknownMemberType]
-        while not cli.wait_for_service(timeout_sec=1.0):
-            self.connector.node.get_logger().info(  # type: ignore[reportUnknownMemberType]
-                f"service {service_name} not available, waiting again..."
-            )
+        cli = create_service_client(self.connector, RAIGroundedSam, service_name)  # type: ignore[reportUnknownMemberType]
         req = RAIGroundedSam.Request()
         req.detections = data.detections  # type: ignore[reportUnknownMemberType]
         req.source_img = camera_img_message

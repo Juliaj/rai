@@ -37,6 +37,18 @@ def pytest_configure(config):
         "filterwarnings",
         "ignore:Importing from timm.models.layers is deprecated:FutureWarning",
     )
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore:rai_perception.vision_markup.boxer.GDBoxer is deprecated:DeprecationWarning",
+    )
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore:rai_perception.vision_markup.segmenter.GDSegmenter is deprecated:DeprecationWarning",
+    )
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore:rai_perception.vision_markup is deprecated:DeprecationWarning",
+    )
 
 
 @pytest.fixture
@@ -112,11 +124,7 @@ def patch_ros2_for_agent_tests(mock_connector):
     with (
         patch("rai.communication.ros2.ROS2Connector", return_value=mock_connector),
         patch(
-            "rai_perception.agents.grounding_dino.ROS2Connector",
-            return_value=mock_connector,
-        ),
-        patch(
-            "rai_perception.agents.grounded_sam.ROS2Connector",
+            "rai_perception.agents._helpers.ROS2Connector",
             return_value=mock_connector,
         ),
         patch(

@@ -112,6 +112,8 @@ class TestGroundingDinoBaseTool:
         future = base_tool._call_gdino_node(image_msg, ["dinosaur", "dragon"])
 
         assert future is not None
+        mock_connector.node.create_client.assert_called_once()
+        mock_client.wait_for_service.assert_called_once()
         mock_client.call_async.assert_called_once()
 
     def test_parse_detection_array(self, base_tool):

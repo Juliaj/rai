@@ -28,14 +28,14 @@ from .components.gripping_points import (  # noqa: E402
     PointCloudFromSegmentation,
     PointCloudFromSegmentationConfig,
 )
+from .components.topic_utils import (  # noqa: E402
+    discover_camera_topics,
+    wait_for_perception_dependencies,
+)
 from .tools import GetDetectionTool, GetDistanceToObjectsTool  # noqa: E402
 from .tools.gripping_points_tools import (  # noqa: E402
     GetObjectGrippingPointsTool,
     GetObjectGrippingPointsToolInput,
-)
-from .utils import (  # noqa: E402
-    discover_camera_topics,
-    wait_for_perception_dependencies,
 )
 
 __all__ = [
