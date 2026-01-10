@@ -17,54 +17,24 @@
 Tests the model-agnostic detection service that uses the detection model registry.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-import rclpy
-from rai_perception.algorithms.boxer import Box
 from rai_perception.services.detection_service import DetectionService
-from rclpy.parameter import Parameter
-from sensor_msgs.msg import Image
 
 from tests.rai_perception.conftest import (
-    create_valid_weights_file,
-    patch_ros2_for_service_tests,
+    setup_mock_clock,
 )
+from tests.rai_perception.test_helpers import (
+    create_detection_request,
+    get_detection_weights_path,
+    patch_detection_service_dependencies,
+    setup_service_parameters,
+)
+from tests.rai_perception.test_mocks import EmptyBoxer, MockGDBoxer
 
 # Service name default changed from "grounding_dino_classify" to "/detection"
 DETECTION_SERVICE_NAME = "/detection"
-
-
-class MockGDBoxer:
-    """Mock GDBoxer for testing."""
-
-    def __init__(self, weights_path):
-        self.weights_path = weights_path
-
-    def get_boxes(self, image_msg, classes, box_threshold, text_threshold):
-        """Mock box detection."""
-        box1 = Box((50.0, 50.0), 40.0, 40.0, classes[0], 0.9)
-        box2 = Box((100.0, 100.0), 30.0, 30.0, classes[1], 0.8)
-        return [box1, box2]
-
-
-def setup_mock_clock(instance):
-    """Setup mock clock for tests."""
-    from builtin_interfaces.msg import Time as BuiltinTime
-
-    class TimeWithToMsg(BuiltinTime):
-        """BuiltinTime wrapper that adds to_msg() method for compatibility."""
-
-        def to_msg(self):
-            return self
-
-    mock_clock = MagicMock()
-    mock_time = MagicMock()
-    mock_ts = TimeWithToMsg()
-    mock_time.to_msg.return_value = mock_ts
-    mock_clock.now.return_value = mock_time
-
-    instance.ros2_connector.node.get_clock = MagicMock(return_value=mock_clock)
 
 
 class TestDetectionService:
@@ -73,38 +43,13 @@ class TestDetectionService:
     @pytest.mark.timeout(10)
     def test_init(self, tmp_path, mock_connector):
         """Test initialization."""
-        # Create weights file with the expected filename
-        weights_path = tmp_path / "vision" / "weights" / "groundingdino_swint_ogc.pth"
-        create_valid_weights_file(weights_path)
+        weights_path = get_detection_weights_path(tmp_path)
 
-        with (
-            patch("rai_perception.algorithms.boxer.GDBoxer", MockGDBoxer),
-            patch("rai_perception.models.detection.get_model") as mock_get_model,
-            patch_ros2_for_service_tests(mock_connector),
-            patch("rai_perception.services.base_vision_service.download_weights"),
-            patch.object(
-                DetectionService, "_load_model_with_error_handling"
-            ) as mock_load_model,
+        with patch_detection_service_dependencies(
+            mock_connector, MockGDBoxer, weights_path
         ):
-            from rai_perception.algorithms.boxer import GDBoxer
-
-            mock_get_model.return_value = (GDBoxer, "config_path")
-            mock_load_model.return_value = MockGDBoxer(weights_path)
-
-            # Set ROS2 parameters for service
-            mock_connector.node.set_parameters(
-                [
-                    Parameter(
-                        "model_name",
-                        rclpy.parameter.Parameter.Type.STRING,
-                        "grounding_dino",
-                    ),
-                    Parameter(
-                        "service_name",
-                        rclpy.parameter.Parameter.Type.STRING,
-                        DETECTION_SERVICE_NAME,
-                    ),
-                ]
+            setup_service_parameters(
+                mock_connector, "grounding_dino", DETECTION_SERVICE_NAME
             )
 
             instance = DetectionService(
@@ -119,43 +64,13 @@ class TestDetectionService:
     @pytest.mark.timeout(10)
     def test_classify_callback_empty_boxes(self, tmp_path, mock_connector):
         """Test classify callback with no detections."""
-        # Create fake weights file with the expected filename (service checks if file exists)
-        weights_path = tmp_path / "vision" / "weights" / "groundingdino_swint_ogc.pth"
-        create_valid_weights_file(weights_path)
+        weights_path = get_detection_weights_path(tmp_path)
 
-        class EmptyBoxer:
-            def __init__(self, weights_path):
-                self.weights_path = weights_path
-
-            def get_boxes(self, image_msg, classes, box_threshold, text_threshold):
-                return []
-
-        with (
-            patch("rai_perception.algorithms.boxer.GDBoxer", EmptyBoxer),
-            patch("rai_perception.models.detection.get_model") as mock_get_model,
-            patch_ros2_for_service_tests(mock_connector),
-            patch("rai_perception.services.base_vision_service.download_weights"),
-            patch.object(
-                DetectionService, "_load_model_with_error_handling"
-            ) as mock_load_model,
+        with patch_detection_service_dependencies(
+            mock_connector, EmptyBoxer, weights_path
         ):
-            from rai_perception.algorithms.boxer import GDBoxer
-
-            mock_get_model.return_value = (GDBoxer, "config_path")
-            mock_load_model.return_value = EmptyBoxer(weights_path)
-            mock_connector.node.set_parameters(
-                [
-                    Parameter(
-                        "model_name",
-                        rclpy.parameter.Parameter.Type.STRING,
-                        "grounding_dino",
-                    ),
-                    Parameter(
-                        "service_name",
-                        rclpy.parameter.Parameter.Type.STRING,
-                        DETECTION_SERVICE_NAME,
-                    ),
-                ]
+            setup_service_parameters(
+                mock_connector, "grounding_dino", DETECTION_SERVICE_NAME
             )
 
             instance = DetectionService(
@@ -166,12 +81,7 @@ class TestDetectionService:
 
             from rai_interfaces.srv import RAIGroundingDino
 
-            request = RAIGroundingDino.Request()
-            request.source_img = Image()
-            request.classes = "dinosaur"
-            request.box_threshold = 0.4
-            request.text_threshold = 0.4
-
+            request = create_detection_request("dinosaur")
             response = RAIGroundingDino.Response()
 
             setup_mock_clock(instance)
@@ -185,36 +95,13 @@ class TestDetectionService:
     @pytest.mark.timeout(10)
     def test_run_creates_service(self, tmp_path, mock_connector):
         """Test that run() creates the ROS2 service."""
-        # Create fake weights file with the expected filename (service checks if file exists)
-        weights_path = tmp_path / "vision" / "weights" / "groundingdino_swint_ogc.pth"
-        create_valid_weights_file(weights_path)
+        weights_path = get_detection_weights_path(tmp_path)
 
-        with (
-            patch("rai_perception.algorithms.boxer.GDBoxer", MockGDBoxer),
-            patch("rai_perception.models.detection.get_model") as mock_get_model,
-            patch_ros2_for_service_tests(mock_connector),
-            patch("rai_perception.services.base_vision_service.download_weights"),
-            patch.object(
-                DetectionService, "_load_model_with_error_handling"
-            ) as mock_load_model,
+        with patch_detection_service_dependencies(
+            mock_connector, MockGDBoxer, weights_path
         ):
-            from rai_perception.algorithms.boxer import GDBoxer
-
-            mock_get_model.return_value = (GDBoxer, "config_path")
-            mock_load_model.return_value = MockGDBoxer(weights_path)
-            mock_connector.node.set_parameters(
-                [
-                    Parameter(
-                        "model_name",
-                        rclpy.parameter.Parameter.Type.STRING,
-                        "grounding_dino",
-                    ),
-                    Parameter(
-                        "service_name",
-                        rclpy.parameter.Parameter.Type.STRING,
-                        DETECTION_SERVICE_NAME,
-                    ),
-                ]
+            setup_service_parameters(
+                mock_connector, "grounding_dino", DETECTION_SERVICE_NAME
             )
 
             instance = DetectionService(
@@ -245,36 +132,13 @@ class TestDetectionService:
     @pytest.mark.timeout(10)
     def test_classify_callback(self, tmp_path, mock_connector):
         """Test classify callback processes request correctly."""
-        # Create fake weights file with the expected filename (service checks if file exists)
-        weights_path = tmp_path / "vision" / "weights" / "groundingdino_swint_ogc.pth"
-        create_valid_weights_file(weights_path)
+        weights_path = get_detection_weights_path(tmp_path)
 
-        with (
-            patch("rai_perception.algorithms.boxer.GDBoxer", MockGDBoxer),
-            patch("rai_perception.models.detection.get_model") as mock_get_model,
-            patch_ros2_for_service_tests(mock_connector),
-            patch("rai_perception.services.base_vision_service.download_weights"),
-            patch.object(
-                DetectionService, "_load_model_with_error_handling"
-            ) as mock_load_model,
+        with patch_detection_service_dependencies(
+            mock_connector, MockGDBoxer, weights_path
         ):
-            from rai_perception.algorithms.boxer import GDBoxer
-
-            mock_get_model.return_value = (GDBoxer, "config_path")
-            mock_load_model.return_value = MockGDBoxer(weights_path)
-            mock_connector.node.set_parameters(
-                [
-                    Parameter(
-                        "model_name",
-                        rclpy.parameter.Parameter.Type.STRING,
-                        "grounding_dino",
-                    ),
-                    Parameter(
-                        "service_name",
-                        rclpy.parameter.Parameter.Type.STRING,
-                        DETECTION_SERVICE_NAME,
-                    ),
-                ]
+            setup_service_parameters(
+                mock_connector, "grounding_dino", DETECTION_SERVICE_NAME
             )
 
             instance = DetectionService(
@@ -285,12 +149,7 @@ class TestDetectionService:
 
             from rai_interfaces.srv import RAIGroundingDino
 
-            request = RAIGroundingDino.Request()
-            request.source_img = Image()
-            request.classes = "dinosaur, dragon"
-            request.box_threshold = 0.4
-            request.text_threshold = 0.4
-
+            request = create_detection_request("dinosaur, dragon")
             response = RAIGroundingDino.Response()
 
             setup_mock_clock(instance)

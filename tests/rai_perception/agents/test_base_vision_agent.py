@@ -19,6 +19,8 @@ import pytest
 import rclpy
 from rai_perception.agents.base_vision_agent import BaseVisionAgent
 
+from tests.rai_perception.conftest import create_valid_weights_file
+
 
 class MockBaseVisionAgent(BaseVisionAgent):
     """Mock implementation of BaseVisionAgent with required attributes."""
@@ -29,17 +31,6 @@ class MockBaseVisionAgent(BaseVisionAgent):
     def run(self):
         """Dummy implementation of abstract run method for testing."""
         pass
-
-
-def create_valid_weights_file(weights_path: Path, size_mb: int = 2) -> None:
-    """Helper to create a valid weights file for testing.
-
-    Args:
-        weights_path: Path where the weights file should be created
-        size_mb: Size of the file in megabytes (default: 2MB)
-    """
-    weights_path.parent.mkdir(parents=True, exist_ok=True)
-    weights_path.write_bytes(b"0" * (size_mb * 1024 * 1024))
 
 
 def get_weights_path(tmp_path: Path) -> Path:

@@ -177,3 +177,44 @@ def get_weights_path(tmp_path: Path) -> Path:
         Path to the weights file
     """
     return tmp_path / "vision" / "weights" / "test_weights.pth"
+
+
+def setup_mock_clock(instance):
+    """Setup mock clock for tests.
+
+    The code calls clock().now().to_msg() to get ts, then passes ts to
+    to_detection_msg which expects rclpy.time.Time and calls ts.to_msg() again.
+    However, ts is also assigned to response.detections.header.stamp which expects
+    builtin_interfaces.msg.Time.
+
+    ROS2 Humble vs Jazzy difference:
+    - Humble: Strict type checking in __debug__ mode requires actual BuiltinTime
+      instances, not MagicMock objects. Using MagicMock causes AssertionError.
+    - Jazzy: More lenient with MagicMock, but BuiltinTime instances don't allow
+      dynamically adding methods (AttributeError when accessing to_msg).
+
+    Solution: Create a wrapper class that inherits from BuiltinTime and adds to_msg().
+
+    Args:
+        instance: Test instance with ros2_connector.node or ros2_connector._node attribute
+    """
+    from builtin_interfaces.msg import Time as BuiltinTime
+
+    class TimeWithToMsg(BuiltinTime):
+        """BuiltinTime wrapper that adds to_msg() method for compatibility."""
+
+        def to_msg(self):
+            return self
+
+    mock_clock = MagicMock()
+    mock_time = MagicMock()
+    mock_ts = TimeWithToMsg()
+    mock_time.to_msg.return_value = mock_ts
+    mock_clock.now.return_value = mock_time
+
+    # Support both .node and ._node access patterns
+    if hasattr(instance, "ros2_connector"):
+        if hasattr(instance.ros2_connector, "_node"):
+            instance.ros2_connector._node.get_clock = MagicMock(return_value=mock_clock)
+        if hasattr(instance.ros2_connector, "node"):
+            instance.ros2_connector.node.get_clock = MagicMock(return_value=mock_clock)

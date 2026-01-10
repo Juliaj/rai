@@ -15,7 +15,6 @@
 """Tests for weight management helper functions."""
 
 import subprocess
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,11 +24,7 @@ from rai_perception.services.weights import (
     remove_weights,
 )
 
-
-def create_valid_weights_file(weights_path: Path, size_mb: int = 2) -> None:
-    """Helper to create a valid weights file for testing."""
-    weights_path.parent.mkdir(parents=True, exist_ok=True)
-    weights_path.write_bytes(b"0" * (size_mb * 1024 * 1024))
+from tests.rai_perception.conftest import create_valid_weights_file
 
 
 class TestDownloadWeights:
