@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pathlib import Path
 
 import pytest
 from rai_perception.algorithms.segmenter import GDSegmenter
@@ -24,11 +23,8 @@ def test_get_model_valid():
     AlgorithmClass, config_path = get_model("grounded_sam")
 
     assert AlgorithmClass is GDSegmenter
-    assert config_path.endswith("seg_config.yml")
-    # Verify path is absolute (resolved) to avoid Hydra path issues
-    assert Path(config_path).is_absolute(), (
-        f"Config path should be absolute: {config_path}"
-    )
+    # SAM2 uses Hydra config module, so config_path is None
+    assert config_path is None
 
 
 def test_get_model_invalid_name():

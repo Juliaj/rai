@@ -11,8 +11,8 @@ required_simulation_ros2_interfaces:
   actions: []
 required_robotic_ros2_interfaces:
   services:
-      - /grounding_dino_classify
-      - /grounded_sam_segment
+      - /detection
+      - /segmentation
       - /manipulator_move_to
   topics: []
   actions: []

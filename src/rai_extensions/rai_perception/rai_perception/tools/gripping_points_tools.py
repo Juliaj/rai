@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, Type
+import logging
+from typing import Any, Dict, Optional, Type
 
 from pydantic import BaseModel, Field
 from rai.tools.ros2.base import BaseROS2Tool
@@ -26,9 +27,12 @@ from rai_perception.components.gripping_points import (
     PointCloudFromSegmentation,
     PointCloudFromSegmentationConfig,
 )
+from rai_perception.utils import _suggest_topic_match, discover_camera_topics
 
 # Parameter prefix for ROS2 configuration
-PCL_DETECTION_PARAM_PREFIX = "pcl.detection.gripping_points"
+GRIPPING_POINTS_TOOL_PARAM_PREFIX = "perception.gripping_points"
+
+logger = logging.getLogger(__name__)
 
 
 class GetObjectGrippingPointsToolInput(BaseModel):
@@ -98,47 +102,133 @@ class GetObjectGrippingPointsTool(BaseROS2Tool):
         self._initialize_components()
 
     def _load_parameters(self) -> None:
-        """Load configuration from ROS2 parameters."""
+        """Load configuration from ROS2 parameters with auto-declaration and defaults."""
         node = self.connector.node
-        param_prefix = PCL_DETECTION_PARAM_PREFIX
+        param_prefix = GRIPPING_POINTS_TOOL_PARAM_PREFIX
 
-        # Declare required parameters
-        params = [
-            f"{param_prefix}.target_frame",
-            f"{param_prefix}.source_frame",
-            f"{param_prefix}.camera_topic",
-            f"{param_prefix}.depth_topic",
-            f"{param_prefix}.camera_info_topic",
-        ]
+        # Default values for parameters (deployment-specific, but common defaults)
+        defaults = {
+            "target_frame": "base_link",
+            "source_frame": "camera_link",
+            "camera_topic": "/camera/rgb/image_raw",
+            "depth_topic": "/camera/depth/image_raw",
+            "camera_info_topic": "/camera/rgb/camera_info",
+            "timeout_sec": 10.0,
+            "conversion_ratio": 0.001,
+        }
 
-        for param_name in params:
+        # Auto-declare parameters with defaults if not already set
+        param_values = {}
+        for param_key, default_value in defaults.items():
+            param_name = f"{param_prefix}.{param_key}"
             if not node.has_parameter(param_name):
-                raise ValueError(
-                    f"Required parameter '{param_name}' must be set before initializing GetObjectGrippingPointsTool"
+                node.declare_parameter(param_name, default_value)
+                param_values[param_key] = default_value
+                logger.info(
+                    f"Auto-declared parameter '{param_name}' with default: {default_value}"
                 )
+            else:
+                param_value = node.get_parameter(param_name).value
+                param_values[param_key] = param_value
+                if param_value != default_value:
+                    logger.info(
+                        f"Using overridden parameter '{param_name}': {param_value} (default: {default_value})"
+                    )
+                else:
+                    logger.debug(
+                        f"Using parameter '{param_name}': {param_value} (default)"
+                    )
 
         # Load parameters
-        self.target_frame = node.get_parameter(f"{param_prefix}.target_frame").value
-        self.source_frame = node.get_parameter(f"{param_prefix}.source_frame").value
-        self.camera_topic = node.get_parameter(f"{param_prefix}.camera_topic").value
-        self.depth_topic = node.get_parameter(f"{param_prefix}.depth_topic").value
-        self.camera_info_topic = node.get_parameter(
-            f"{param_prefix}.camera_info_topic"
-        ).value
+        self.target_frame = param_values["target_frame"]
+        self.source_frame = param_values["source_frame"]
+        self.camera_topic = param_values["camera_topic"]
+        self.depth_topic = param_values["depth_topic"]
+        self.camera_info_topic = param_values["camera_info_topic"]
+        self.timeout_sec = param_values["timeout_sec"]
+        self.conversion_ratio = param_values["conversion_ratio"]
 
-        # timeout for gripping point detection
-        self.timeout_sec = (
-            node.get_parameter(f"{param_prefix}.timeout_sec").value
-            if node.has_parameter(f"{param_prefix}.timeout_sec")
-            else 10.0
+        # Log summary of all parameters for observability
+        logger.info(
+            f"GetObjectGrippingPointsTool initialized with parameters:\n"
+            f"  target_frame: {self.target_frame}\n"
+            f"  source_frame: {self.source_frame}\n"
+            f"  camera_topic: {self.camera_topic}\n"
+            f"  depth_topic: {self.depth_topic}\n"
+            f"  camera_info_topic: {self.camera_info_topic}\n"
+            f"  timeout_sec: {self.timeout_sec}\n"
+            f"  conversion_ratio: {self.conversion_ratio}"
         )
 
-        # conversion ratio for point cloud from segmentation
-        self.conversion_ratio = (
-            node.get_parameter(f"{param_prefix}.conversion_ratio").value
-            if node.has_parameter(f"{param_prefix}.conversion_ratio")
-            else 0.001
-        )
+        # Early validation: check if topics exist and provide suggestions
+        self._validate_topics_early()
+
+    def _validate_topics_early(self) -> None:
+        """Validate that required topics exist and provide suggestions if missing."""
+        try:
+            all_topics = [
+                topic[0] for topic in self.connector.get_topics_names_and_types()
+            ]
+        except Exception:
+            # If we can't query topics (e.g., ROS2 not fully initialized), skip validation
+            logger.debug("Could not query topics for early validation, skipping")
+            return
+
+        required_topics = [
+            self.camera_topic,
+            self.depth_topic,
+            self.camera_info_topic,
+        ]
+        missing = [t for t in required_topics if t not in all_topics]
+
+        if missing:
+            discovered = discover_camera_topics(self.connector)
+
+            logger.warning(
+                f"GetObjectGrippingPointsTool: Some required topics are not currently available:\n"
+                f"  Missing topics: {missing}\n"
+                f"  Note: Topics may not be available yet (this is an early check).\n"
+                f"  If topics remain unavailable after waiting, check for topic name mismatches.\n"
+                f"  To remap to your robot/simulation topics, set ROS2 parameters before tool initialization:\n"
+                f"    node.declare_parameter('{GRIPPING_POINTS_TOOL_PARAM_PREFIX}.camera_topic', '/your/robot/camera/topic')\n"
+                f"    node.declare_parameter('{GRIPPING_POINTS_TOOL_PARAM_PREFIX}.depth_topic', '/your/robot/depth/topic')\n"
+                f"    node.declare_parameter('{GRIPPING_POINTS_TOOL_PARAM_PREFIX}.camera_info_topic', '/your/robot/camera_info/topic')"
+            )
+
+            # Provide suggestions for missing topics
+            suggestions = []
+            for missing_topic in missing:
+                topic_lower = missing_topic.lower()
+                if "depth" in topic_lower:
+                    candidates = discovered["depth_topics"]
+                    topic_type = "depth"
+                elif "info" in topic_lower or "camera_info" in topic_lower:
+                    candidates = discovered["camera_info_topics"]
+                    topic_type = "camera_info"
+                else:
+                    candidates = discovered["image_topics"]
+                    topic_type = "camera"
+
+                if candidates:
+                    # Find best match
+                    suggestion = _suggest_topic_match(
+                        missing_topic, candidates, topic_type
+                    )
+                    if suggestion:
+                        suggestions.append(
+                            f"    '{missing_topic}' -> try '{suggestion}'"
+                        )
+                    else:
+                        suggestions.append(
+                            f"    '{missing_topic}' -> available {topic_type} topics: {candidates[:3]}"
+                        )
+
+            if suggestions:
+                logger.warning(
+                    "  Available topics on your system:\n" + "\n".join(suggestions)
+                )
+        else:
+            logger.debug("All required topics are available")
 
     def _initialize_components(self) -> None:
         """Initialize PCL components with loaded parameters."""
@@ -156,6 +246,35 @@ class GetObjectGrippingPointsTool(BaseROS2Tool):
             config=self.estimator_config
         )
         self.point_cloud_filter = PointCloudFilter(config=self.filter_config)
+
+    @property
+    def detection_service_name(self) -> str:
+        """Get the detection service name used by this tool."""
+        return self.point_cloud_from_segmentation._get_detection_service_name()
+
+    @property
+    def segmentation_service_name(self) -> str:
+        """Get the segmentation service name used by this tool."""
+        return self.point_cloud_from_segmentation._get_segmentation_service_name()
+
+    def get_config(self) -> Dict[str, Any]:
+        """Get current ROS2 parameter configuration for observability.
+
+        Returns:
+            Dictionary mapping parameter names to their current values.
+            Includes all deployment-specific parameters and service names.
+        """
+        return {
+            "target_frame": self.target_frame,
+            "source_frame": self.source_frame,
+            "camera_topic": self.camera_topic,
+            "depth_topic": self.depth_topic,
+            "camera_info_topic": self.camera_info_topic,
+            "timeout_sec": self.timeout_sec,
+            "conversion_ratio": self.conversion_ratio,
+            "detection_service_name": self.detection_service_name,
+            "segmentation_service_name": self.segmentation_service_name,
+        }
 
     def _run(self, object_name: str) -> str:
         @timeout(

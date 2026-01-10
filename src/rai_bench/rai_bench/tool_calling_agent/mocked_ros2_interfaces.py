@@ -3113,8 +3113,8 @@ MANIPULATION_SERVICES_AND_TYPES: Dict[str, str] = {
 }
 
 CUSTOM_SERVICES_AND_TYPES: Dict[str, str] = {
-    "/grounded_sam_segment": "rai_interfaces/srv/RAIGroundedSam",
-    "/grounding_dino_classify": "rai_interfaces/srv/RAIGroundingDino",
+    "/segmentation": "rai_interfaces/srv/RAIGroundedSam",
+    "/detection": "rai_interfaces/srv/RAIGroundingDino",
     "/manipulator_move_to": "rai_interfaces/srv/ManipulatorMoveTo",
     "/get_log_digest": "rai_interfaces/srv/StringList",
     "/rai_whoami_documentation_service": "rai_interfaces/srv/VectorStoreRetrieval",

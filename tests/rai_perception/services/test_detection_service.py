@@ -21,7 +21,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import rclpy
-from rai_perception.agents.grounding_dino import GDINO_SERVICE_NAME
 from rai_perception.algorithms.boxer import Box
 from rai_perception.services.detection_service import DetectionService
 from rclpy.parameter import Parameter
@@ -31,6 +30,9 @@ from tests.rai_perception.conftest import (
     create_valid_weights_file,
     patch_ros2_for_service_tests,
 )
+
+# Service name default changed from "grounding_dino_classify" to "/detection"
+DETECTION_SERVICE_NAME = "/detection"
 
 
 class MockGDBoxer:
@@ -100,7 +102,7 @@ class TestDetectionService:
                     Parameter(
                         "service_name",
                         rclpy.parameter.Parameter.Type.STRING,
-                        GDINO_SERVICE_NAME,
+                        DETECTION_SERVICE_NAME,
                     ),
                 ]
             )
@@ -151,7 +153,7 @@ class TestDetectionService:
                     Parameter(
                         "service_name",
                         rclpy.parameter.Parameter.Type.STRING,
-                        GDINO_SERVICE_NAME,
+                        DETECTION_SERVICE_NAME,
                     ),
                 ]
             )
@@ -210,7 +212,7 @@ class TestDetectionService:
                     Parameter(
                         "service_name",
                         rclpy.parameter.Parameter.Type.STRING,
-                        GDINO_SERVICE_NAME,
+                        DETECTION_SERVICE_NAME,
                     ),
                 ]
             )
@@ -229,7 +231,7 @@ class TestDetectionService:
                 mock_create_service.assert_called_once()
                 call_args = mock_create_service.call_args
                 assert (
-                    call_args[0][0] == GDINO_SERVICE_NAME
+                    call_args[0][0] == DETECTION_SERVICE_NAME
                     or call_args[0][0] == "/detection"
                 )
                 assert (
@@ -270,7 +272,7 @@ class TestDetectionService:
                     Parameter(
                         "service_name",
                         rclpy.parameter.Parameter.Type.STRING,
-                        GDINO_SERVICE_NAME,
+                        DETECTION_SERVICE_NAME,
                     ),
                 ]
             )

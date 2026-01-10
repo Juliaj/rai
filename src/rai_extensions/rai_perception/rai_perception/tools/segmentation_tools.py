@@ -33,7 +33,6 @@ from rclpy.exceptions import (
 )
 
 from rai_interfaces.srv import RAIGroundedSam, RAIGroundingDino
-from rai_perception import GDINO_SERVICE_NAME, GSAM_SERVICE_NAME
 from rai_perception.algorithms.point_cloud import depth_to_point_cloud
 
 # --------------------- Inputs ---------------------
@@ -83,8 +82,9 @@ class GetSegmentationTool:
         """Get detection service name from ROS2 parameter or use default.
 
         Reads from parameter: /detection_tool/service_name
-        Default: GDINO_SERVICE_NAME ("grounding_dino_classify")
+        Default: "/detection" (generic, model-agnostic)
         """
+        default_service = "/detection"
         try:
             service_name = self.connector.node.get_parameter(
                 "/detection_tool/service_name"
@@ -92,20 +92,21 @@ class GetSegmentationTool:
             if isinstance(service_name, str) and service_name:
                 return service_name
             self.connector.node.get_logger().warning(
-                f"Parameter /detection_tool/service_name is invalid, using default: {GDINO_SERVICE_NAME}"
+                f"Parameter /detection_tool/service_name is invalid, using default: {default_service}"
             )
         except (ParameterUninitializedException, ParameterNotDeclaredException):
             self.connector.node.get_logger().debug(
-                f"Parameter /detection_tool/service_name not found, using default: {GDINO_SERVICE_NAME}"
+                f"Parameter /detection_tool/service_name not found, using default: {default_service}"
             )
-        return GDINO_SERVICE_NAME
+        return default_service
 
     def _get_segmentation_service_name(self) -> str:
         """Get segmentation service name from ROS2 parameter or use default.
 
         Reads from parameter: /segmentation_tool/service_name
-        Default: GSAM_SERVICE_NAME ("grounded_sam_segment")
+        Default: "/segmentation" (generic, model-agnostic)
         """
+        default_service = "/segmentation"
         try:
             service_name = self.connector.node.get_parameter(
                 "/segmentation_tool/service_name"
@@ -113,13 +114,13 @@ class GetSegmentationTool:
             if isinstance(service_name, str) and service_name:
                 return service_name
             self.connector.node.get_logger().warning(
-                f"Parameter /segmentation_tool/service_name is invalid, using default: {GSAM_SERVICE_NAME}"
+                f"Parameter /segmentation_tool/service_name is invalid, using default: {default_service}"
             )
         except (ParameterUninitializedException, ParameterNotDeclaredException):
             self.connector.node.get_logger().debug(
-                f"Parameter /segmentation_tool/service_name not found, using default: {GSAM_SERVICE_NAME}"
+                f"Parameter /segmentation_tool/service_name not found, using default: {default_service}"
             )
-        return GSAM_SERVICE_NAME
+        return default_service
 
     def _get_gdino_response(
         self, future: Future
@@ -227,8 +228,9 @@ class GetGrabbingPointTool(BaseTool):
         """Get detection service name from ROS2 parameter or use default.
 
         Reads from parameter: /detection_tool/service_name
-        Default: GDINO_SERVICE_NAME ("grounding_dino_classify")
+        Default: "/detection" (generic, model-agnostic)
         """
+        default_service = "/detection"
         try:
             service_name = self.connector.node.get_parameter(
                 "/detection_tool/service_name"
@@ -236,20 +238,21 @@ class GetGrabbingPointTool(BaseTool):
             if isinstance(service_name, str) and service_name:
                 return service_name
             self.connector.node.get_logger().warning(
-                f"Parameter /detection_tool/service_name is invalid, using default: {GDINO_SERVICE_NAME}"
+                f"Parameter /detection_tool/service_name is invalid, using default: {default_service}"
             )
         except (ParameterUninitializedException, ParameterNotDeclaredException):
             self.connector.node.get_logger().debug(
-                f"Parameter /detection_tool/service_name not found, using default: {GDINO_SERVICE_NAME}"
+                f"Parameter /detection_tool/service_name not found, using default: {default_service}"
             )
-        return GDINO_SERVICE_NAME
+        return default_service
 
     def _get_segmentation_service_name(self) -> str:
         """Get segmentation service name from ROS2 parameter or use default.
 
         Reads from parameter: /segmentation_tool/service_name
-        Default: GSAM_SERVICE_NAME ("grounded_sam_segment")
+        Default: "/segmentation" (generic, model-agnostic)
         """
+        default_service = "/segmentation"
         try:
             service_name = self.connector.node.get_parameter(
                 "/segmentation_tool/service_name"
@@ -257,13 +260,13 @@ class GetGrabbingPointTool(BaseTool):
             if isinstance(service_name, str) and service_name:
                 return service_name
             self.connector.node.get_logger().warning(
-                f"Parameter /segmentation_tool/service_name is invalid, using default: {GSAM_SERVICE_NAME}"
+                f"Parameter /segmentation_tool/service_name is invalid, using default: {default_service}"
             )
         except (ParameterUninitializedException, ParameterNotDeclaredException):
             self.connector.node.get_logger().debug(
-                f"Parameter /segmentation_tool/service_name not found, using default: {GSAM_SERVICE_NAME}"
+                f"Parameter /segmentation_tool/service_name not found, using default: {default_service}"
             )
-        return GSAM_SERVICE_NAME
+        return default_service
 
     def _get_gdino_response(
         self, future: Future

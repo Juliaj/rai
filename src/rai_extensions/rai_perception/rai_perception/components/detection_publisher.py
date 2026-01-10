@@ -150,7 +150,7 @@ class DetectionPublisher:
             ),
             (
                 "dino_service",
-                detection_pub_params.get("dino_service", "/grounding_dino_classify"),
+                detection_pub_params.get("dino_service", "/detection"),
                 ParameterType.PARAMETER_STRING,
                 "GroundingDINO service name",
             ),

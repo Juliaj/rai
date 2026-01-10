@@ -113,11 +113,11 @@ Multi-tier abstraction with significant complexity:
 
 **Current State:**
 
-1. **Tool-level error handling**: Tools catch `RaiTimeoutError` and return user-friendly messages (e.g., `pcl_detection_tools.py` line 195-197). Generic `Exception` is re-raised without context (line 198-199).
+1. **Tool-level error handling**: Tools catch `RaiTimeoutError` and return user-friendly messages (e.g., `gripping_points_tools.py` line 195-197). Generic `Exception` is re-raised without context (line 198-199).
 
 2. **Parameter validation**: Inconsistent patterns:
 
-    - `pcl_detection_tools.py`: Raises `ValueError` with clear message if required ROS2 params missing (line 116-118)
+    - `gripping_points_tools.py`: Raises `ValueError` with clear message if required ROS2 params missing (line 116-118)
     - `gdino_tools.py`: Catches `ParameterUninitializedException`, logs warning, uses defaults (line 231-235)
     - `segmentation_tools.py`: Generic `Exception("Received wrong message")` (line 94, 221)
 
@@ -126,7 +126,7 @@ Multi-tier abstraction with significant complexity:
 4. **Algorithm errors**: Low-level algorithm failures (RANSAC, filtering) propagate as generic exceptions without actionable context.
 
 5. **RAI framework patterns**:
-    - `RaiTimeoutError`: Custom exception for timeouts (used in `pcl_detection_tools.py`)
+    - `RaiTimeoutError`: Custom exception for timeouts (used in `gripping_points_tools.py`)
     - `ToolRunner`: Catches `ValidationError` (Pydantic) and generic `Exception`, returns `ToolMessage` with `status="error"` (rai_core)
     - `BaseVisionAgent`: Handles model loading errors with automatic retry for corrupted weights
 
@@ -163,7 +163,7 @@ Multi-tier abstraction with significant complexity:
     - Contextual: Include what failed and why
     - Structured: Return error details in tool response format
 
-3. **Early validation**: Move parameter validation to tool initialization (like `pcl_detection_tools.py`) rather than runtime checks with generic exceptions.
+3. **Early validation**: Move parameter validation to tool initialization (like `gripping_points_tools.py`) rather than runtime checks with generic exceptions.
 
 4. **Pipeline stage visibility**: Add intermediate error reporting for multi-stage pipelines (detection → segmentation → filtering → estimation) so failures can be diagnosed.
 
@@ -280,7 +280,7 @@ rai_perception/
 │   ├── gdino_tools.py        # GetDetectionTool, GetDistanceToObjectsTool
 │   │                         # TODO: Read service_name from ROS2 param /detection_tool/service_name
 │   │                         # (default: "/detection") instead of hardcoding GDINO_SERVICE_NAME
-│   ├── pcl_detection_tools.py # GetObjectGrippingPointsTool
+│   ├── gripping_points_tools.py # GetObjectGrippingPointsTool
 │   └── segmentation_tools.py  # GetSegmentationTool, GetGrabbingPointTool (deprecated)
 │                             # TODO: Read service_name from ROS2 params instead of hardcoding
 │
@@ -293,7 +293,7 @@ rai_perception/
 │   ├── perception_presets.py # Semantic preset definitions: "high", "medium", "low", "top_down", "centroid"
 │   │                         # API: get_preset(), apply_preset(), list_presets()
 │   │                         # Note: General config utilities (loader, merger, get_param_value) are in rai_core
-│   └── pcl_detection.py      # Point cloud processing components: PointCloudFromSegmentation, PointCloudFilter, GrippingPointEstimator
+│   └── gripping_points.py    # Point cloud processing components: PointCloudFromSegmentation, PointCloudFilter, GrippingPointEstimator
 │                             # Strategy pattern: dbscan, isolation_forest, centroid, top_plane, biggest_plane
 │
 ├── algorithms/                # Low-level: Core algorithms
@@ -302,7 +302,7 @@ rai_perception/
 │   │                         # Example: GDBoxer(weights_path, config_path="configs/gdino_config.py")
 │   ├── segmenter.py          # GDSegmenter (segmentation algorithm)
 │   │                         # Algorithm loads its own config (self-contained)
-│   └── point_cloud.py        # depth_to_point_cloud (extract from pcl_detection.py or segmentation_tools.py)
+│   └── point_cloud.py        # depth_to_point_cloud (extract from gripping_points.py or segmentation_tools.py)
 │
 ├── services/                  # ROS2 service nodes (agents)
 │   ├── base_vision_agent.py  # BaseVisionAgent
@@ -340,7 +340,7 @@ The configuration system follows a multi-tier approach with clear separation of 
 
 2. **ROS2 Parameters (Deployment)**: ROS2 parameters handle deployment settings (topics, frames, timeouts, service names). Retrieved via `rai.communication.ros2.get_param_value()`. Flow: `configs/*.yaml` → ROS2 param system → components/services.
 
-3. **Component Configs (Mid-level)**: Pydantic Config classes (`PointCloudFilterConfig`, `GrippingPointEstimatorConfig`) handle algorithm parameters. Defined in `components/pcl_detection.py`, instantiated from ROS2 params or defaults.
+3. **Component Configs (Mid-level)**: Pydantic Config classes (`PointCloudFilterConfig`, `GrippingPointEstimatorConfig`) handle algorithm parameters. Defined in `components/gripping_points.py`, instantiated from ROS2 params or defaults.
 
 4. **Presets (High-level)**: Semantic presets map user-friendly names to component configs. Tools use presets internally. Flow: `tools/*.py` → `components/perception_presets.py` → `rai.config.merger` → component configs.
 
@@ -369,7 +369,7 @@ The configuration system follows a multi-tier approach with clear separation of 
     - `components/perception_presets.py`: ✅ Implemented
     - `components/perception_utils.py`: ✅ Implemented (currently in `ros2/perception_utils.py`, needs move)
     - `components/detection_publisher.py`: ✅ Implemented (currently in `ros2/detection_publisher.py`, needs move)
-    - `components/pcl_detection.py`: ✅ Implemented (currently in `tools/pcl_detection.py`, needs move)
+    - `components/gripping_points.py`: ✅ Implemented (previously `pcl_detection.py`)
     - TODO: Migrate files to `components/` directory and update imports
 4. Model-Agnostic Services: Refactor `grounding_dino.py` and `grounded_sam.py` to `detection_agent.py` and `segmentation_agent.py` that read model from ROS2 params
 5. Tool Updates: Update tools to read service_name from ROS2 params (via parameter registry) instead of hardcoding, and use presets for semantic configuration
@@ -579,5 +579,84 @@ Design compatibility:
 -   Parameter registry can include observability configuration (enable/disable, verbosity levels)
 -   Consideration: Need to ensure observability doesn't leak into high-level tool APIs (keep tools simple for LLM agents)
 -   Consideration: Design should support optional observability - not required for basic usage
+
+### Adding New Models: YOLO and Florence-2
+
+**YOLO (Detection Model):**
+
+Design Compatibility:
+
+-   Fits tiered architecture: Add `YOLOBoxer` in `algorithms/`, register in `models/detection.py`
+-   No blocking points: Follows same pattern as `GDBoxer`
+-   API difference: Uses class IDs (closed vocabulary) instead of text prompts (open vocabulary)
+-   Config loading: Typically YAML or no config (vs Python config for GroundingDINO)
+
+Work Needed:
+
+1. Create `algorithms/yolo_boxer.py` with `YOLOBoxer` class
+2. Implement `get_boxes(image, class_ids, confidence_threshold)` - different signature than GroundingDINO
+3. Add class ID mapping utility (COCO class names → IDs)
+4. Register in `models/detection.py` registry
+5. Update `algorithms/__init__.py` to export `YOLOBoxer`
+6. Document model-specific config loading (YOLO typically doesn't need config file)
+
+**Florence-2 (Unified Vision-Language Model):**
+
+Design Compatibility:
+
+-   Fits tiered architecture: Add `Florence2Algorithm` in `algorithms/`
+-   No blocking points: Can register in both detection and segmentation registries
+-   Service architecture: Current separate services (`DetectionService`, `SegmentationService`) work but don't leverage unified model efficiently
+-   Task abstraction: Florence-2 uses task prompts (`"OD"`, `"SEG"`) - different from current task-specific models
+
+Work Needed:
+
+1. Create `algorithms/florence2.py` with `Florence2Algorithm` class
+2. Implement both `get_boxes()` and `get_segmentation()` methods (same class, different task prompts)
+3. Handle Hugging Face model loading (no config file needed)
+4. Parse location tokens to bounding boxes/masks (Florence-2 output format)
+5. Register in both `models/detection.py` and `models/segmentation.py` registries
+6. Optional optimization: Consider unified service or capability-based registry for future multi-task models
+
+Future Considerations:
+
+-   Capability-based registry: Design doc mentions `capability="detection+segmentation"` - Florence-2 is good use case
+-   Unified service: Current architecture works but unified service would be more efficient for multi-task models
+-   Task abstraction: Consider `Task` interface/enum for models that support multiple tasks
+
+### External Dependencies: Hydra Configuration System
+
+**Current State:**
+
+The `GDSegmenter` algorithm uses Hydra for configuration management. Hydra is an external dependency (from Facebook Research) that provides configuration composition, overrides, and validation. The SAM2 model library (`sam2`) requires Hydra for loading model configurations.
+
+**Design Decision:**
+
+For the default case (`config_path=None`), we use full file system paths instead of Hydra's config module discovery system. This decision was made to:
+
+1. **Preserve high-level API simplicity**: Application developers using tools should not encounter Hydra-specific errors or need to understand Hydra's package structure requirements.
+
+2. **Reliability**: Full path loading avoids Hydra's config module discovery mechanism, which requires proper package setup (`__init__.py` configuration, correct file extensions, etc.) and can fail in ways that leak implementation details to high-level users.
+
+3. **Progressive disclosure**: Default configs work simply (full path), while advanced users can still use Hydra's module system for config composition and overrides when needed.
+
+**Trade-offs:**
+
+-   **Pros**: Simple, reliable defaults; no abstraction leakage; works out-of-the-box
+-   **Cons**: Bypasses Hydra's module system for defaults; less flexible for config composition/overrides in default case; path-dependent (may break if package structure changes)
+
+**Future Considerations:**
+
+1. **Hydra package setup**: If we want to leverage Hydra's full capabilities (config composition, overrides), we would need to properly set up `rai_perception.configs` as a Hydra config package with appropriate `__init__.py` and file structure.
+
+2. **Alternative approaches**: Consider whether SAM2's Hydra dependency is necessary for our use case, or if we can load configs directly and pass structured configs to SAM2.
+
+3. **Abstraction layer**: The algorithm layer (low-level) currently exposes Hydra as an implementation detail. Consider wrapping Hydra initialization in a config loader abstraction that hides Hydra from higher layers.
+
+4. **Documentation**: Users who want to customize configs should understand when they're using Hydra's module system vs file system paths, and what capabilities each approach provides.
+
+**Design Principle Alignment:**
+
+This approach aligns with the tiered API design: high-level users get simple, reliable defaults without understanding Hydra, while mid-level users can still access Hydra's advanced features when needed. The key is that implementation details (Hydra) don't leak to the high-level API.
 
 ---

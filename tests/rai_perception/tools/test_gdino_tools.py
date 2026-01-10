@@ -80,7 +80,7 @@ class TestGroundingDinoBaseTool:
         # Parameter not set, so get_parameter will raise ParameterNotDeclaredException
         # which is already handled by the mock_connector fixture
         service_name = base_tool._get_detection_service_name()
-        assert service_name == "grounding_dino_classify"
+        assert service_name == "/detection"
 
     def test_get_detection_service_name_from_param(self, base_tool, mock_connector):
         """Test _get_detection_service_name reads from ROS2 parameter."""

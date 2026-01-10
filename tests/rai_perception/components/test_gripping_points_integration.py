@@ -39,7 +39,7 @@ from rai_perception.components.gripping_points import (
     PointCloudFromSegmentationConfig,
     _publish_gripping_point_debug_data,
 )
-from rai_perception.tools.gripping_points_tools import PCL_DETECTION_PARAM_PREFIX
+from rai_perception.tools.gripping_points_tools import GRIPPING_POINTS_TOOL_PARAM_PREFIX
 
 
 def draw_points_on_image(image_msg, points, camera_info):
@@ -207,7 +207,7 @@ def main(
             "if_contamination": 0.05,
         }
 
-    services = ["/grounded_sam_segment", "/grounding_dino_classify"]
+    services = ["/segmentation", "/detection"]
 
     # Initialize ROS2
     rclpy.init()
@@ -224,7 +224,7 @@ def main(
         # Set up node parameters
         node = connector.node
 
-        param_prefix = PCL_DETECTION_PARAM_PREFIX
+        param_prefix = GRIPPING_POINTS_TOOL_PARAM_PREFIX
         # Declare and set ROS2 parameters for deployment configuration
         parameters_to_set = [
             (f"{param_prefix}.target_frame", frames["target"]),

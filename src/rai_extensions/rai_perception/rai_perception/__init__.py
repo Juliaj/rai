@@ -33,6 +33,10 @@ from .tools.gripping_points_tools import (  # noqa: E402
     GetObjectGrippingPointsTool,
     GetObjectGrippingPointsToolInput,
 )
+from .utils import (  # noqa: E402
+    discover_camera_topics,
+    wait_for_perception_dependencies,
+)
 
 __all__ = [
     "GDINO_NODE_NAME",
@@ -52,4 +56,6 @@ __all__ = [
     "PointCloudFromSegmentation",
     "PointCloudFromSegmentationConfig",
     "depth_to_point_cloud",
+    "discover_camera_topics",
+    "wait_for_perception_dependencies",
 ]

@@ -87,19 +87,18 @@ class TestGDSegmenter:
             mock_build.assert_called_once()
 
     def test_gdsegmenter_initialization_with_config_path(self, tmp_path):
-        """Test GDSegmenter initialization with custom config_path."""
+        """Test GDSegmenter initialization with config_path (ignored for SAM2)."""
         weights_path = self._create_test_weights_file(tmp_path)
         config_path = tmp_path / "custom_config.yml"
         config_path.write_text("test: config")
 
         with self._patch_segmenter_dependencies() as (mock_build, _):
-            segmenter = GDSegmenter(
-                str(weights_path), config_path=str(config_path), use_cuda=False
-            )
+            GDSegmenter(str(weights_path), config_path=str(config_path), use_cuda=False)
 
-            assert segmenter.cfg_path == str(config_path)
+            # SAM2 uses Hydra config module, so config_path is ignored
+            # build_sam2 is called with the default config name
             mock_build.assert_called_once_with(
-                str(config_path), str(weights_path), device="cpu"
+                "seg_config.yml", str(weights_path), device="cpu"
             )
 
     def test_gdsegmenter_get_segmentation(self, tmp_path):
@@ -176,125 +175,3 @@ class TestGDSegmenter:
             assert len(xyxy_boxes) == 1
             expected = np.array([30.0, 35.0, 70.0, 65.0])
             np.testing.assert_array_almost_equal(xyxy_boxes[0], expected)
-
-    def test_process_config_path_default(self, tmp_path):
-        """Test _process_config_path with None (default config)."""
-        from pathlib import Path
-
-        weights_path = self._create_test_weights_file(tmp_path)
-
-        with self._patch_segmenter_dependencies():
-            segmenter = GDSegmenter(str(weights_path), use_cuda=False)
-            result = segmenter._process_config_path(None)
-
-            # Should return full absolute path for default config (to avoid Hydra path issues)
-            assert result == segmenter.cfg_path
-            # cfg_path should be set to default path
-            assert "seg_config.yml" in segmenter.cfg_path
-            assert "configs" in segmenter.cfg_path
-            # Should be an absolute path (resolved)
-            assert Path(result).is_absolute(), f"Path should be absolute: {result}"
-
-    def test_process_config_path_full_path(self, tmp_path):
-        """Test _process_config_path with full path."""
-        from pathlib import Path
-
-        weights_path = self._create_test_weights_file(tmp_path)
-        config_path = tmp_path / "custom_config.yml"
-        config_path.write_text("test: config")
-
-        with self._patch_segmenter_dependencies():
-            segmenter = GDSegmenter(str(weights_path), use_cuda=False)
-            result = segmenter._process_config_path(str(config_path))
-
-            # Should return full absolute path (resolved) for build_sam2
-            resolved_path = Path(config_path).resolve()
-            assert result == str(resolved_path)
-            assert segmenter.cfg_path == str(resolved_path)
-            assert Path(result).is_absolute(), f"Path should be absolute: {result}"
-
-    def test_process_config_path_relative_path(self, tmp_path):
-        """Test _process_config_path with relative path."""
-        from pathlib import Path
-
-        weights_path = self._create_test_weights_file(tmp_path)
-        config_path = "relative/path/config.yml"
-
-        with self._patch_segmenter_dependencies():
-            segmenter = GDSegmenter(str(weights_path), use_cuda=False)
-            result = segmenter._process_config_path(config_path)
-
-            # Should return resolved absolute path
-            resolved_path = Path(config_path).resolve()
-            assert result == str(resolved_path)
-            assert segmenter.cfg_path == str(resolved_path)
-            assert Path(result).is_absolute(), f"Path should be absolute: {result}"
-
-    def test_process_config_path_config_name(self, tmp_path):
-        """Test _process_config_path with just config name.
-
-        Note: Paths are now resolved to absolute paths to avoid Hydra path issues.
-        build_sam2 handles its own Hydra initialization internally.
-        """
-        from pathlib import Path
-
-        weights_path = self._create_test_weights_file(tmp_path)
-
-        with self._patch_segmenter_dependencies():
-            segmenter = GDSegmenter(str(weights_path), use_cuda=False)
-            result = segmenter._process_config_path("my_config")
-
-            # Path is resolved to absolute path
-            resolved_path = Path("my_config").resolve()
-            assert result == str(resolved_path)
-            assert segmenter.cfg_path == str(resolved_path)
-            assert Path(result).is_absolute(), f"Path should be absolute: {result}"
-
-    def test_process_config_path_config_name_with_extension(self, tmp_path):
-        """Test _process_config_path with config name including extension.
-
-        Note: Paths are now resolved to absolute paths to avoid Hydra path issues.
-        build_sam2 handles its own Hydra initialization internally.
-        """
-        from pathlib import Path
-
-        weights_path = self._create_test_weights_file(tmp_path)
-
-        with self._patch_segmenter_dependencies():
-            segmenter = GDSegmenter(str(weights_path), use_cuda=False)
-            result = segmenter._process_config_path("my_config.yml")
-
-            # Path is resolved to absolute path
-            resolved_path = Path("my_config.yml").resolve()
-            assert result == str(resolved_path)
-            assert segmenter.cfg_path == str(resolved_path)
-            assert Path(result).is_absolute(), f"Path should be absolute: {result}"
-
-    def test_process_config_path_package_internal_path(self, tmp_path):
-        """Test _process_config_path with full path to config within package.
-
-        This tests the scenario where the registry returns a full path to a config
-        file that's actually within the rai_perception.configs directory.
-
-        With the simplified implementation, we always return the full path and let
-        build_sam2 handle its own Hydra initialization internally.
-        """
-        from pathlib import Path
-
-        import rai_perception.algorithms.segmenter as segmenter_module
-
-        weights_path = self._create_test_weights_file(tmp_path)
-
-        # Get the actual package configs directory path (same logic as in segmenter)
-        package_configs_dir = Path(segmenter_module.__file__).parent.parent / "configs"
-        package_config_path = package_configs_dir / "seg_config.yml"
-
-        # Only run this test if the config file actually exists
-        if package_config_path.exists():
-            with self._patch_segmenter_dependencies():
-                segmenter = GDSegmenter(str(weights_path), use_cuda=False)
-                result = segmenter._process_config_path(str(package_config_path))
-
-                # Simplified implementation returns full path - build_sam2 handles Hydra internally
-                assert result == str(package_config_path)
-                assert segmenter.cfg_path == str(package_config_path)

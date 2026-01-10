@@ -56,7 +56,7 @@ class TestGetSegmentationTool:
         """Test _get_detection_service_name returns default when parameter not set."""
         # Parameter not set, so will use default
         service_name = segmentation_tool._get_detection_service_name()
-        assert service_name == "grounding_dino_classify"
+        assert service_name == "/detection"
 
     def test_get_segmentation_service_name_default(
         self, segmentation_tool, mock_connector
@@ -64,7 +64,7 @@ class TestGetSegmentationTool:
         """Test _get_segmentation_service_name returns default when parameter not set."""
         # Parameter not set, so will use default
         service_name = segmentation_tool._get_segmentation_service_name()
-        assert service_name == "grounded_sam_segment"
+        assert service_name == "/segmentation"
 
     def test_call_gdino_node(self, segmentation_tool, mock_connector):
         """Test _call_gdino_node creates service call."""
@@ -226,13 +226,13 @@ class TestGetGrabbingPointTool:
         """Test _get_detection_service_name returns default when parameter not set."""
         # Parameter not set, so will use default
         service_name = grabbing_tool._get_detection_service_name()
-        assert service_name == "grounding_dino_classify"
+        assert service_name == "/detection"
 
     def test_get_segmentation_service_name_default(self, grabbing_tool, mock_connector):
         """Test _get_segmentation_service_name returns default when parameter not set."""
         # Parameter not set, so will use default
         service_name = grabbing_tool._get_segmentation_service_name()
-        assert service_name == "grounded_sam_segment"
+        assert service_name == "/segmentation"
 
     def test_run(self, grabbing_tool, mock_connector):
         """Test GetGrabbingPointTool._run."""

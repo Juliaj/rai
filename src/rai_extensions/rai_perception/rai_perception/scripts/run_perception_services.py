@@ -38,7 +38,7 @@ def main():
     detection_service = DetectionService(ros2_connector=detection_connector)
     segmentation_service = SegmentationService(ros2_connector=segmentation_connector)
 
-    # detection_service.run()
+    detection_service.run()
     segmentation_service.run()
 
     wait_for_shutdown([detection_service, segmentation_service])

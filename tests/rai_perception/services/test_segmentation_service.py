@@ -22,7 +22,6 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 import rclpy
-from rai_perception.agents.grounded_sam import GSAM_SERVICE_NAME
 from rai_perception.services.segmentation_service import SegmentationService
 from rclpy.parameter import Parameter
 from sensor_msgs.msg import Image
@@ -34,6 +33,9 @@ from tests.rai_perception.conftest import (
     create_valid_weights_file,
     patch_ros2_for_service_tests,
 )
+
+# Service name default changed from "grounded_sam_segment" to "/segmentation"
+SEGMENTATION_SERVICE_NAME = "/segmentation"
 
 
 class MockGDSegmenter:
@@ -84,7 +86,7 @@ class TestSegmentationService:
                     Parameter(
                         "service_name",
                         rclpy.parameter.Parameter.Type.STRING,
-                        GSAM_SERVICE_NAME,
+                        SEGMENTATION_SERVICE_NAME,
                     ),
                 ]
             )
@@ -135,7 +137,7 @@ class TestSegmentationService:
                     Parameter(
                         "service_name",
                         rclpy.parameter.Parameter.Type.STRING,
-                        GSAM_SERVICE_NAME,
+                        SEGMENTATION_SERVICE_NAME,
                     ),
                 ]
             )
@@ -187,7 +189,7 @@ class TestSegmentationService:
                     Parameter(
                         "service_name",
                         rclpy.parameter.Parameter.Type.STRING,
-                        GSAM_SERVICE_NAME,
+                        SEGMENTATION_SERVICE_NAME,
                     ),
                 ]
             )
@@ -243,7 +245,7 @@ class TestSegmentationService:
                     Parameter(
                         "service_name",
                         rclpy.parameter.Parameter.Type.STRING,
-                        GSAM_SERVICE_NAME,
+                        SEGMENTATION_SERVICE_NAME,
                     ),
                 ]
             )

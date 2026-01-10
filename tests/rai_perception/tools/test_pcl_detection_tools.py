@@ -23,7 +23,7 @@ try:
 except ImportError:
     pytest.skip("ROS2 is not installed", allow_module_level=True)
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import numpy as np
 from rai.communication.ros2.connectors import ROS2Connector
@@ -36,6 +36,7 @@ from rai_perception import (
     PointCloudFromSegmentation,
     PointCloudFromSegmentationConfig,
 )
+from rai_perception.tools.gripping_points_tools import GRIPPING_POINTS_TOOL_PARAM_PREFIX
 
 
 def test_gripping_point_estimator():
@@ -178,3 +179,87 @@ def test_get_gripping_point_tool_timeout():
         tool._run("test")
         == "Timeout: Gripping point detection for object 'test' exceeded 1.0 seconds"
     )
+
+
+def test_get_object_gripping_points_tool_auto_declaration():
+    """Test that GetObjectGrippingPointsTool auto-declares parameters with defaults."""
+    rclpy.init()
+    try:
+        connector = ROS2Connector(executor_type="single_threaded")
+        node = connector.node
+
+        # Test 1: Auto-declaration with defaults when no parameters are set
+        # Clear any existing parameters
+        param_prefix = GRIPPING_POINTS_TOOL_PARAM_PREFIX
+        for param_key in [
+            "target_frame",
+            "source_frame",
+            "camera_topic",
+            "depth_topic",
+            "camera_info_topic",
+            "timeout_sec",
+            "conversion_ratio",
+        ]:
+            param_name = f"{param_prefix}.{param_key}"
+            if node.has_parameter(param_name):
+                node.undeclare_parameter(param_name)
+
+        # Initialize tool - should auto-declare with defaults
+        with patch("rai_perception.tools.gripping_points_tools.logger") as mock_logger:
+            tool = GetObjectGrippingPointsTool(connector=connector)
+
+            # Verify defaults are used
+            assert tool.target_frame == "base_link"
+            assert tool.source_frame == "camera_link"
+            assert tool.camera_topic == "/camera/rgb/image_raw"
+            assert tool.depth_topic == "/camera/depth/image_raw"
+            assert tool.camera_info_topic == "/camera/rgb/camera_info"
+            assert tool.timeout_sec == 10.0
+            assert tool.conversion_ratio == 0.001
+
+            # Verify logging occurred
+            assert mock_logger.info.called
+            log_calls = [str(call) for call in mock_logger.info.call_args_list]
+            assert any("Auto-declared parameter" in str(call) for call in log_calls)
+            assert any(
+                "GetObjectGrippingPointsTool initialized" in str(call)
+                for call in log_calls
+            )
+
+        # Test 2: Override parameters before initialization
+        # Undeclare parameters from Test 1 first
+        for param_key in ["target_frame", "camera_topic"]:
+            param_name = f"{param_prefix}.{param_key}"
+            if node.has_parameter(param_name):
+                node.undeclare_parameter(param_name)
+
+        # Now declare with custom values
+        node.declare_parameter(f"{param_prefix}.target_frame", "custom_frame")
+        node.declare_parameter(f"{param_prefix}.camera_topic", "/custom/camera")
+
+        with patch("rai_perception.tools.gripping_points_tools.logger") as mock_logger:
+            tool2 = GetObjectGrippingPointsTool(connector=connector)
+
+            # Verify overrides are used
+            assert tool2.target_frame == "custom_frame"
+            assert tool2.camera_topic == "/custom/camera"
+            # Other params should still use defaults
+            assert tool2.source_frame == "camera_link"
+
+            # Verify override logging
+            log_calls = [str(call) for call in mock_logger.info.call_args_list]
+            assert any(
+                "overridden parameter" in str(call).lower() for call in log_calls
+            )
+
+        # Test 3: get_config() method
+        config = tool2.get_config()
+        assert isinstance(config, dict)
+        assert config["target_frame"] == "custom_frame"
+        assert config["camera_topic"] == "/custom/camera"
+        assert config["timeout_sec"] == 10.0
+        assert "detection_service_name" in config
+        assert "segmentation_service_name" in config
+
+    finally:
+        rclpy.shutdown()

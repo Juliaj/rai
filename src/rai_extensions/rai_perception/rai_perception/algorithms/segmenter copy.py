@@ -50,30 +50,33 @@ class GDSegmenter:
 
         Args:
             weight_path: Path to model weights file
-            config_path: Ignored. SAM2 uses Hydra config module system internally.
+            config_path: Path to config file (ignored, kept for backwards compatibility)
             use_cuda: Whether to use CUDA if available
         """
         self.logger = logging.getLogger(__name__)
-        self.weight_path = str(weight_path)
 
-        if use_cuda and torch.cuda.is_available():
-            self.device = "cuda"
-        else:
-            if use_cuda:
+        self.weight_path = str(weight_path)
+        if use_cuda:
+            if torch.cuda.is_available():
+                self.device = "cuda"
+            else:
                 self.logger.warning("CUDA is not available but requested, using CPU")
+                self.device = "cpu"
+        else:
             self.device = "cpu"
 
-        # Initialize Hydra with config module and build SAM2 model
+        # Clear Hydra if already initialized
         hydra.core.global_hydra.GlobalHydra.instance().clear()
+
+        # Initialize Hydra with config module
         hydra.initialize_config_module("rai_perception.configs")
-
+        cfg_name = "seg_config.yml"
         try:
-            self.sam2_model = build_sam2(
-                "seg_config.yml", self.weight_path, device=self.device
-            )
+            self.sam2_model = build_sam2(cfg_name, self.weight_path, device=self.device)
         except Exception as e:
-            raise PerceptionError(f"Failed to build SAM2 model: {str(e)}") from e
-
+            raise PerceptionError(
+                f"Failed to build SAM2 model with config '{cfg_name}': {str(e)}"
+            ) from e
         self.sam2_predictor = SAM2ImagePredictor(self.sam2_model)
         self.bridge = CvBridge()
 

@@ -28,7 +28,6 @@ from rclpy.exceptions import (
 from rclpy.task import Future
 
 from rai_interfaces.srv import RAIGroundingDino
-from rai_perception import GDINO_SERVICE_NAME
 
 
 # --------------------- Inputs ---------------------
@@ -94,8 +93,9 @@ class GroundingDinoBaseTool(BaseTool):
         """Get detection service name from ROS2 parameter or use default.
 
         Reads from parameter: /detection_tool/service_name
-        Default: GDINO_SERVICE_NAME ("grounding_dino_classify")
+        Default: "/detection" (generic, model-agnostic)
         """
+        default_service = "/detection"
         try:
             service_name = self.connector.node.get_parameter(
                 "/detection_tool/service_name"
@@ -103,13 +103,18 @@ class GroundingDinoBaseTool(BaseTool):
             if isinstance(service_name, str) and service_name:
                 return service_name
             self.connector.node.get_logger().warning(
-                f"Parameter /detection_tool/service_name is invalid, using default: {GDINO_SERVICE_NAME}"
+                f"Parameter /detection_tool/service_name is invalid, using default: {default_service}"
             )
         except (ParameterUninitializedException, ParameterNotDeclaredException):
             self.connector.node.get_logger().debug(
-                f"Parameter /detection_tool/service_name not found, using default: {GDINO_SERVICE_NAME}"
+                f"Parameter /detection_tool/service_name not found, using default: {default_service}"
             )
-        return GDINO_SERVICE_NAME
+        return default_service
+
+    @property
+    def service_name(self) -> str:
+        """Get the detection service name used by this tool."""
+        return self._get_detection_service_name()
 
     def _call_gdino_node(
         self, camera_img_message: sensor_msgs.msg.Image, object_names: list[str]
