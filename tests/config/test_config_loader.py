@@ -12,11 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from unittest.mock import MagicMock
-
 import pytest
 import yaml
 from rai.config.loader import get_config_path, load_python_config, load_yaml_config
+
+from tests.config.conftest import (
+    create_mock_node_with_parameter,
+    create_mock_node_without_parameter,
+    create_python_config_file,
+    create_yaml_config_file,
+)
 
 
 class TestLoadYAMLConfig:
@@ -26,8 +31,7 @@ class TestLoadYAMLConfig:
         """Test basic YAML config loading."""
         config_file = tmp_path / "test_config.yaml"
         config_data = {"key1": "value1", "key2": 42, "nested": {"key": "value"}}
-        with open(config_file, "w") as f:
-            yaml.dump(config_data, f)
+        create_yaml_config_file(config_file, config_data)
 
         result = load_yaml_config(config_file)
 
@@ -44,8 +48,7 @@ class TestLoadYAMLConfig:
                 }
             }
         }
-        with open(config_file, "w") as f:
-            yaml.dump(config_data, f)
+        create_yaml_config_file(config_file, config_data)
 
         result = load_yaml_config(config_file, node_name="test_node")
 
@@ -64,8 +67,7 @@ class TestLoadYAMLConfig:
     def test_load_yaml_config_invalid_yaml(self, tmp_path):
         """Test YAML config loading with invalid YAML."""
         config_file = tmp_path / "invalid.yaml"
-        with open(config_file, "w") as f:
-            f.write("invalid: yaml: content: [unclosed")
+        create_python_config_file(config_file, "invalid: yaml: content: [unclosed")
 
         with pytest.raises(yaml.YAMLError):
             load_yaml_config(config_file)
@@ -81,8 +83,7 @@ class TestLoadPythonConfig:
 CONFIG_VALUE = "test_value"
 CONFIG_NUMBER = 42
 """
-        with open(config_file, "w") as f:
-            f.write(config_content)
+        create_python_config_file(config_file, config_content)
 
         module = load_python_config(config_file)
 
@@ -104,11 +105,10 @@ class TestGetConfigPath:
 
     def test_get_config_path_from_parameter(self, tmp_path):
         """Test getting config path from ROS2 parameter."""
-        mock_node = MagicMock()
-        mock_param = MagicMock()
-        mock_param.value = str(tmp_path / "custom_config.yaml")
-        mock_node.has_parameter.return_value = True
-        mock_node.get_parameter.return_value = mock_param
+        custom_config_path = str(tmp_path / "custom_config.yaml")
+        mock_node = create_mock_node_with_parameter(
+            "config_path_param", custom_config_path
+        )
 
         result = get_config_path(
             "config_path_param", mock_node, tmp_path, "default.yaml"
@@ -118,8 +118,7 @@ class TestGetConfigPath:
 
     def test_get_config_path_default_when_missing(self, tmp_path):
         """Test getting default config path when parameter is missing."""
-        mock_node = MagicMock()
-        mock_node.has_parameter.return_value = False
+        mock_node = create_mock_node_without_parameter()
 
         result = get_config_path(
             "config_path_param", mock_node, tmp_path, "default.yaml"

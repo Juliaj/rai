@@ -12,49 +12,35 @@
 # See the specific language governing permissions and
 # limitations under the License.
 
+"""Agent-specific tests for GroundingDinoAgent.
+
+Note: Algorithm functionality is tested via TestGDBoxerViaAgent in test_boxer.py.
+This file only contains agent-specific tests (default path, service creation, etc.).
+"""
+
 from unittest.mock import patch
 
 import pytest
 from rai_perception.agents.grounding_dino import GroundingDinoAgent
 
 from tests.rai_perception.agents.test_base_vision_agent import cleanup_agent
-from tests.rai_perception.conftest import (
-    create_valid_weights_file,
-    setup_mock_clock,
-)
+from tests.rai_perception.conftest import create_valid_weights_file
 from tests.rai_perception.test_helpers import (
-    create_detection_request,
     get_default_detection_weights_path,
     get_detection_weights_path,
     patch_detection_agent_dependencies,
     patch_detection_agent_dependencies_default_path,
 )
-from tests.rai_perception.test_mocks import EmptyBoxer, MockGDBoxer
+from tests.rai_perception.test_mocks import MockGDBoxer
 
 
 class TestGroundingDinoAgent:
-    """Test cases for GroundingDinoAgent.
+    """Agent-specific test cases for GroundingDinoAgent.
 
-    Note: All tests patch ROS2Connector to prevent hanging. BaseVisionAgent.__init__
-    creates a real ROS2Connector which requires ROS2 to be initialized, so we patch
-    it to use a mock instead for unit testing.
+    Note: Algorithm functionality (initialization, get_boxes) is tested via
+    TestGDBoxerViaAgent in algorithms/test_boxer.py. These tests focus on
+    agent-specific behavior like default paths and service creation.
     """
-
-    @pytest.mark.timeout(10)
-    def test_init(self, tmp_path, mock_connector):
-        """Test GroundingDinoAgent initialization."""
-        weights_path = get_detection_weights_path(tmp_path)
-
-        with patch_detection_agent_dependencies(
-            mock_connector, MockGDBoxer, weights_path
-        ):
-            agent = GroundingDinoAgent(
-                weights_root_path=str(tmp_path), ros2_name="test"
-            )
-
-            assert agent._service._boxer is not None
-
-            cleanup_agent(agent)
 
     @pytest.mark.timeout(10)
     def test_init_default_path(self, mock_connector):
@@ -91,61 +77,5 @@ class TestGroundingDinoAgent:
                 agent.run()
 
                 mock_create_service.assert_called_once()
-
-            cleanup_agent(agent)
-
-    @pytest.mark.timeout(10)
-    def test_classify_callback(self, tmp_path, mock_connector):
-        """Test classify callback processes request correctly."""
-        weights_path = get_detection_weights_path(tmp_path)
-
-        with patch_detection_agent_dependencies(
-            mock_connector, MockGDBoxer, weights_path
-        ):
-            agent = GroundingDinoAgent(
-                weights_root_path=str(tmp_path), ros2_name="test"
-            )
-
-            # Create mock request
-            from rai_interfaces.srv import RAIGroundingDino
-
-            request = create_detection_request("dinosaur, dragon")
-            response = RAIGroundingDino.Response()
-
-            setup_mock_clock(agent)
-
-            # Call callback via service
-            result = agent._service._classify_callback(request, response)
-
-            # Verify response
-            assert len(result.detections.detections) == 2
-            assert result.detections.detection_classes == ["dinosaur", "dragon"]
-            assert result is response
-
-            cleanup_agent(agent)
-
-    @pytest.mark.timeout(10)
-    def test_classify_callback_empty_boxes(self, tmp_path, mock_connector):
-        """Test classify callback with no detections."""
-        weights_path = get_detection_weights_path(tmp_path)
-
-        with patch_detection_agent_dependencies(
-            mock_connector, EmptyBoxer, weights_path
-        ):
-            agent = GroundingDinoAgent(
-                weights_root_path=str(tmp_path), ros2_name="test"
-            )
-
-            from rai_interfaces.srv import RAIGroundingDino
-
-            request = create_detection_request("dinosaur")
-            response = RAIGroundingDino.Response()
-
-            setup_mock_clock(agent)
-
-            result = agent._service._classify_callback(request, response)
-
-            assert len(result.detections.detections) == 0
-            assert result.detections.detection_classes == ["dinosaur"]
 
             cleanup_agent(agent)

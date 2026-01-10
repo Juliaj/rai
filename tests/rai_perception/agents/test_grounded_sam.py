@@ -12,48 +12,35 @@
 # See the specific language governing permissions and
 # limitations under the License.
 
+"""Agent-specific tests for GroundedSamAgent.
+
+Note: Algorithm functionality is tested via TestGDSegmenterViaAgent in test_segmenter.py.
+This file only contains agent-specific tests (default path, service creation, etc.).
+"""
+
 from unittest.mock import patch
 
 import pytest
 from rai_perception.agents.grounded_sam import GroundedSamAgent
 
-from rai_interfaces.srv import RAIGroundedSam
 from tests.rai_perception.agents.test_base_vision_agent import cleanup_agent
-from tests.rai_perception.conftest import (
-    create_valid_weights_file,
-)
+from tests.rai_perception.conftest import create_valid_weights_file
 from tests.rai_perception.test_helpers import (
-    create_segmentation_request,
-    create_test_detection2d,
     get_default_segmentation_weights_path,
     get_segmentation_weights_path,
     patch_segmentation_agent_dependencies,
     patch_segmentation_agent_dependencies_default_path,
 )
-from tests.rai_perception.test_mocks import EmptySegmenter, MockGDSegmenter
+from tests.rai_perception.test_mocks import MockGDSegmenter
 
 
 class TestGroundedSamAgent:
-    """Test cases for GroundedSamAgent.
+    """Agent-specific test cases for GroundedSamAgent.
 
-    Note: All tests patch ROS2Connector to prevent hanging. BaseVisionAgent.__init__
-    creates a real ROS2Connector which requires ROS2 to be initialized, so we patch
-    it to use a mock instead for unit testing.
+    Note: Algorithm functionality (initialization, get_segmentation) is tested via
+    TestGDSegmenterViaAgent in algorithms/test_segmenter.py. These tests focus on
+    agent-specific behavior like default paths and service creation.
     """
-
-    @pytest.mark.timeout(10)
-    def test_init(self, tmp_path, mock_connector):
-        """Test GroundedSamAgent initialization."""
-        weights_path = get_segmentation_weights_path(tmp_path)
-
-        with patch_segmentation_agent_dependencies(
-            mock_connector, MockGDSegmenter, weights_path
-        ):
-            agent = GroundedSamAgent(weights_root_path=str(tmp_path), ros2_name="test")
-
-            assert agent._service._segmenter is not None
-
-            cleanup_agent(agent)
 
     @pytest.mark.timeout(10)
     def test_init_default_path(self, mock_connector):
@@ -88,48 +75,5 @@ class TestGroundedSamAgent:
                 agent.run()
 
                 mock_create_service.assert_called_once()
-
-            cleanup_agent(agent)
-
-    @pytest.mark.timeout(10)
-    def test_segment_callback(self, tmp_path, mock_connector):
-        """Test segment callback processes request correctly."""
-        weights_path = get_segmentation_weights_path(tmp_path)
-
-        with patch_segmentation_agent_dependencies(
-            mock_connector, MockGDSegmenter, weights_path
-        ):
-            agent = GroundedSamAgent(weights_root_path=str(tmp_path), ros2_name="test")
-
-            # Create mock request
-            detection1 = create_test_detection2d(30.0, 30.0, 40.0, 40.0)
-            detection2 = create_test_detection2d(75.0, 75.0, 30.0, 30.0)
-            request = create_segmentation_request([detection1, detection2])
-            response = RAIGroundedSam.Response()
-
-            # Call callback via service
-            result = agent._service._segment_callback(request, response)
-
-            # Verify response contains masks
-            assert len(result.masks) == 2
-            assert result is response
-
-            cleanup_agent(agent)
-
-    @pytest.mark.timeout(10)
-    def test_segment_callback_empty_detections(self, tmp_path, mock_connector):
-        """Test segment callback with empty detections."""
-        weights_path = get_segmentation_weights_path(tmp_path)
-
-        with patch_segmentation_agent_dependencies(
-            mock_connector, EmptySegmenter, weights_path
-        ):
-            agent = GroundedSamAgent(weights_root_path=str(tmp_path), ros2_name="test")
-
-            request = create_segmentation_request()
-            response = RAIGroundedSam.Response()
-            result = agent._service._segment_callback(request, response)
-
-            assert len(result.masks) == 0
 
             cleanup_agent(agent)

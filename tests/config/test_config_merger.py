@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import pytest
 from rai.config.merger import merge_configs, merge_nested_configs
 
 
@@ -38,6 +38,25 @@ class TestMergeConfigs:
         result = merge_configs(defaults, ros2_params, user_overrides)
 
         assert result == {"key": "default"}
+
+    @pytest.mark.parametrize(
+        "defaults,ros2_params,user_overrides,expected",
+        [
+            ({}, {}, {}, {}),
+            ({"a": 1}, {}, {}, {"a": 1}),
+            ({}, {"a": 1}, {}, {"a": 1}),
+            ({}, {}, {"a": 1}, {"a": 1}),
+            ({"a": 1}, {"a": 2}, {}, {"a": 2}),
+            ({"a": 1}, {}, {"a": 3}, {"a": 3}),
+            ({"a": 1}, {"a": 2}, {"a": 3}, {"a": 3}),
+        ],
+    )
+    def test_merge_configs_combinations(
+        self, defaults, ros2_params, user_overrides, expected
+    ):
+        """Test various combinations of merge inputs."""
+        result = merge_configs(defaults, ros2_params, user_overrides)
+        assert result == expected
 
 
 class TestMergeNestedConfigs:
