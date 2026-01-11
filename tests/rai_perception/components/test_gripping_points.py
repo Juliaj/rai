@@ -264,8 +264,8 @@ class TestGrippingPointEstimator:
 class TestPointCloudFilter:
     """Test cases for PointCloudFilter."""
 
-    def test_isolation_forest_strategy(self):
-        """Test isolation_forest filtering strategy."""
+    def test_aggressive_outlier_removal_strategy(self):
+        """Test aggressive_outlier_removal filtering strategy (maps to Isolation Forest)."""
         # Create points with outliers
         inliers = np.random.rand(50, 3).astype(np.float32) * 0.1
         outliers = np.array(
@@ -274,9 +274,9 @@ class TestPointCloudFilter:
         points = np.vstack([inliers, outliers])
 
         config = PointCloudFilterConfig(
-            strategy="isolation_forest",
+            strategy="aggressive_outlier_removal",
             min_points=10,
-            if_contamination=0.1,
+            outlier_fraction=0.1,
         )
         filter_obj = PointCloudFilter(config)
         result = filter_obj.run([points])
@@ -286,8 +286,8 @@ class TestPointCloudFilter:
         assert result[0].shape[0] < points.shape[0]
         assert result[0].shape[0] >= inliers.shape[0] * 0.8  # Most inliers kept
 
-    def test_dbscan_strategy(self):
-        """Test DBSCAN filtering strategy."""
+    def test_density_based_strategy(self):
+        """Test density_based filtering strategy (maps to DBSCAN)."""
         # Create two clusters
         cluster1 = np.random.rand(30, 3).astype(np.float32) * 0.1
         cluster2 = (np.random.rand(20, 3).astype(np.float32) * 0.1) + np.array(
@@ -296,10 +296,10 @@ class TestPointCloudFilter:
         points = np.vstack([cluster1, cluster2])
 
         config = PointCloudFilterConfig(
-            strategy="dbscan",
+            strategy="density_based",
             min_points=10,
-            dbscan_eps=0.5,
-            dbscan_min_samples=5,
+            cluster_radius_m=0.5,
+            min_cluster_size=5,
         )
         filter_obj = PointCloudFilter(config)
         result = filter_obj.run([points])
@@ -308,8 +308,8 @@ class TestPointCloudFilter:
         # Should keep largest cluster
         assert result[0].shape[0] > 0
 
-    def test_kmeans_largest_cluster_strategy(self):
-        """Test kmeans_largest_cluster filtering strategy."""
+    def test_cluster_based_strategy(self):
+        """Test cluster_based filtering strategy (maps to KMeans)."""
         # Create two clusters
         cluster1 = np.random.rand(40, 3).astype(np.float32) * 0.1
         cluster2 = (np.random.rand(20, 3).astype(np.float32) * 0.1) + np.array(
@@ -318,9 +318,9 @@ class TestPointCloudFilter:
         points = np.vstack([cluster1, cluster2])
 
         config = PointCloudFilterConfig(
-            strategy="kmeans_largest_cluster",
+            strategy="cluster_based",
             min_points=10,
-            kmeans_k=2,
+            num_clusters=2,
         )
         filter_obj = PointCloudFilter(config)
         result = filter_obj.run([points])
@@ -331,7 +331,9 @@ class TestPointCloudFilter:
     def test_filter_insufficient_points(self):
         """Test filtering with insufficient points returns original."""
         points = np.random.rand(5, 3).astype(np.float32)
-        config = PointCloudFilterConfig(strategy="isolation_forest", min_points=10)
+        config = PointCloudFilterConfig(
+            strategy="aggressive_outlier_removal", min_points=10
+        )
         filter_obj = PointCloudFilter(config)
         result = filter_obj.run([points])
 
@@ -341,7 +343,7 @@ class TestPointCloudFilter:
     def test_filter_empty_points(self):
         """Test filtering empty point cloud."""
         empty_cloud = np.zeros((0, 3), dtype=np.float32)
-        config = PointCloudFilterConfig(strategy="isolation_forest")
+        config = PointCloudFilterConfig(strategy="aggressive_outlier_removal")
         filter_obj = PointCloudFilter(config)
         result = filter_obj.run([empty_cloud])
 
@@ -349,7 +351,9 @@ class TestPointCloudFilter:
 
     def test_multiple_clouds(self, multi_object_point_clouds):
         """Test filtering multiple point clouds."""
-        config = PointCloudFilterConfig(strategy="isolation_forest", min_points=2)
+        config = PointCloudFilterConfig(
+            strategy="aggressive_outlier_removal", min_points=2
+        )
         filter_obj = PointCloudFilter(config)
         result = filter_obj.run(multi_object_point_clouds)
 
@@ -366,8 +370,8 @@ class TestPointCloudFilter:
         assert len(result) == 1
         np.testing.assert_array_equal(result[0], sample_point_cloud)
 
-    def test_lof_strategy(self):
-        """Test LOF filtering strategy."""
+    def test_conservative_outlier_removal_strategy(self):
+        """Test conservative_outlier_removal filtering strategy (maps to Local Outlier Factor)."""
         # Create points with outliers
         inliers = np.random.rand(50, 3).astype(np.float32) * 0.1
         outliers = np.array(
@@ -376,10 +380,10 @@ class TestPointCloudFilter:
         points = np.vstack([inliers, outliers])
 
         config = PointCloudFilterConfig(
-            strategy="lof",
+            strategy="conservative_outlier_removal",
             min_points=10,
-            lof_n_neighbors=20,
-            lof_contamination=0.1,
+            neighborhood_size=20,
+            outlier_fraction=0.1,
         )
         filter_obj = PointCloudFilter(config)
         result = filter_obj.run([points])
@@ -447,7 +451,12 @@ class TestPointCloudFilter:
 
     def test_filter_get_strategy_method(self):
         """Test _get_strategy_method helper."""
-        strategies = ["dbscan", "kmeans_largest_cluster", "isolation_forest", "lof"]
+        strategies = [
+            "density_based",
+            "cluster_based",
+            "aggressive_outlier_removal",
+            "conservative_outlier_removal",
+        ]
         for strategy in strategies:
             config = PointCloudFilterConfig(strategy=strategy)
             filter_obj = PointCloudFilter(config)

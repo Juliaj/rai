@@ -24,28 +24,31 @@ PresetName = Literal["default_grasp", "precise_grasp", "top_grasp"]
 """Preset names for gripping points extraction configuration.
 
 Presets provide pre-configured combinations of filter and estimator strategies
-optimized for different use cases:
+optimized for different use cases. All presets use domain-oriented parameter names
+that map to underlying algorithms internally.
 
-- "default_grasp": Default preset matching tool defaults. Uses isolation_forest
-  filtering (5% contamination) and centroid estimation. Good general-purpose
-  option for most scenarios.
+- "default_grasp": Default preset matching tool defaults. Uses aggressive_outlier_removal
+  filtering (5% outlier_fraction, maps to Isolation Forest) and centroid estimation.
+  Good general-purpose option for most scenarios.
 
 - "precise_grasp": High-quality preset with aggressive outlier filtering
-  (isolation_forest with 1% contamination) and precise top-plane estimation
-  (500 RANSAC iterations, 5mm distance threshold). Best for accurate grasping
-  in clean environments.
+  (aggressive_outlier_removal with 1% outlier_fraction, maps to Isolation Forest)
+  and precise top-plane estimation (500 RANSAC iterations, 5mm distance threshold).
+  Best for accurate grasping in clean environments.
 
-- "top_grasp": Optimized for top-down grasping from above. Uses isolation_forest
-  filtering with top-plane estimation that focuses on the top 5% of Z-height points.
-  Best when grasping objects from directly above.
+- "top_grasp": Optimized for top-down grasping from above. Uses aggressive_outlier_removal
+  filtering (maps to Isolation Forest) with top-plane estimation that focuses on the
+  top 5% of Z-height points. Best when grasping objects from directly above.
 """
 
 
 _PRESETS: Dict[PresetName, Dict[str, Any]] = {
     "default_grasp": {
         "filter_config": {
-            "strategy": "isolation_forest",
-            "if_contamination": 0.05,
+            # Domain-oriented strategy name: maps to Isolation Forest algorithm
+            "strategy": "aggressive_outlier_removal",
+            # Semantic parameter: maps to Isolation Forest contamination
+            "outlier_fraction": 0.05,
             "min_points": 20,
         },
         "estimator_config": {
@@ -57,8 +60,10 @@ _PRESETS: Dict[PresetName, Dict[str, Any]] = {
     },
     "precise_grasp": {
         "filter_config": {
-            "strategy": "isolation_forest",
-            "if_contamination": 0.01,
+            # Domain-oriented strategy name: maps to Isolation Forest algorithm
+            "strategy": "aggressive_outlier_removal",
+            # Semantic parameter: maps to Isolation Forest contamination
+            "outlier_fraction": 0.01,
             "min_points": 30,
         },
         "estimator_config": {
@@ -69,8 +74,10 @@ _PRESETS: Dict[PresetName, Dict[str, Any]] = {
     },
     "top_grasp": {
         "filter_config": {
-            "strategy": "isolation_forest",
-            "if_contamination": 0.05,
+            # Domain-oriented strategy name: maps to Isolation Forest algorithm
+            "strategy": "aggressive_outlier_removal",
+            # Semantic parameter: maps to Isolation Forest contamination
+            "outlier_fraction": 0.05,
         },
         "estimator_config": {
             "strategy": "top_plane",

@@ -33,7 +33,7 @@ class TestGetPreset:
 
         assert "filter_config" in preset
         assert "estimator_config" in preset
-        assert preset["filter_config"]["strategy"] == "isolation_forest"
+        assert preset["filter_config"]["strategy"] == "aggressive_outlier_removal"
 
     def test_get_preset_invalid_name(self):
         """Test getting invalid preset name raises ValueError."""
@@ -61,12 +61,12 @@ class TestApplyPreset:
 
         assert isinstance(filter_config, PointCloudFilterConfig)
         assert isinstance(estimator_config, GrippingPointEstimatorConfig)
-        assert filter_config.strategy == "isolation_forest"
+        assert filter_config.strategy == "aggressive_outlier_removal"
         assert estimator_config.strategy == "centroid"
 
     def test_apply_preset_merges_with_base(self):
         """Test applying preset merges with base configs."""
-        base_filter = PointCloudFilterConfig(strategy="dbscan", min_points=50)
+        base_filter = PointCloudFilterConfig(strategy="density_based", min_points=50)
         base_estimator = GrippingPointEstimatorConfig(
             strategy="centroid", min_points=20
         )
@@ -75,7 +75,9 @@ class TestApplyPreset:
             "precise_grasp", base_filter, base_estimator
         )
 
-        assert filter_config.strategy == "isolation_forest"  # Preset overrides
+        assert (
+            filter_config.strategy == "aggressive_outlier_removal"
+        )  # Preset overrides
         assert filter_config.min_points == 30  # Preset overrides
         assert estimator_config.strategy == "top_plane"  # Preset overrides
         assert estimator_config.min_points == 20  # Base preserved (not in preset)

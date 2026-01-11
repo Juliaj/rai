@@ -76,7 +76,7 @@ Multi-tier abstraction with significant complexity:
 **Mid-level (Extension Developer):**
 
 -   Configuration classes: `PointCloudFilterConfig`, `GrippingPointEstimatorConfig`, `PointCloudFromSegmentationConfig` - expose 10+ algorithm parameters
--   Example: Must understand filtering strategies (`dbscan`, `isolation_forest`, `kmeans_largest_cluster`, `lof`), RANSAC parameters, percentile thresholds
+-   Example: Must understand filtering strategies (`density_based`, `aggressive_outlier_removal`, `cluster_based`, `conservative_outlier_removal` - Note: Algorithm-specific names like `dbscan`, `isolation_forest` have been replaced with domain-oriented names in 2025), RANSAC parameters, percentile thresholds
 -   Abstraction: Exposes algorithm selection and tuning but hides implementation details
 
 **Low-level (Core Developer / Algorithm Expert):**
@@ -97,7 +97,7 @@ Multi-tier abstraction with significant complexity:
     - Partial solution: Debug mode (`debug=True`) added to `GetObjectGrippingPointsTool` publishes intermediate results to ROS2 topics and logs stage-level metadata, enabling visualization of pipeline stages in RVIZ. Next step: Extend debug mode to other tools and consider exposing intermediate results as optional return values for programmatic access.
 6. **Parameter discovery**: Configuration options scattered across multiple config classes—no single source of truth for all parameters
 7. **Error messages**: Algorithm-specific errors (e.g., RANSAC failures, filtering edge cases) may not provide actionable guidance
-8. **Domain correspondence gap**: Parameter names like `if_contamination`, `lof_n_neighbors` don't clearly map to perception domain concepts
+8. **Domain correspondence gap**: Parameter names like `if_contamination`, `lof_n_neighbors` don't clearly map to perception domain concepts (Note: This has been addressed in 2025 by replacing algorithm-specific names with semantic names like `outlier_fraction` and `neighborhood_size` - see API Analysis section for details)
 9. **Code duplication**: Significant duplication exists across tools at the infrastructure level:
 
     - Service client creation (`_call_gdino_node`, `_call_gsam_node`) duplicated across multiple files
@@ -381,7 +381,7 @@ The configuration system follows a multi-tier approach with clear separation of 
 
 The current API design has several strengths: a two-tier configuration system separates deployment settings (ROS2 parameters for topics, frames, timeouts) from algorithm parameters (Pydantic models for thresholds, strategies), and the strategy pattern provides flexibility with multiple filtering (`dbscan`, `isolation_forest`) and estimation strategies (`centroid`, `top_plane`, `ransac_plane`) without requiring API changes.
 
-However, the API has significant complexity concerns for LLM agents. It exposes too many low-level configuration knobs (e.g., `if_contamination`, `dbscan_eps`, `dbscan_min_samples`), creating a combinatorial explosion of choices that agents struggle with. The pipeline abstraction also leaks—tools expose intermediate stages (`PointCloudFromSegmentation`, `GrippingPointEstimator`, `point_cloud_filter`), requiring users to understand the full pipeline structure. Additionally, the boundary between ROS2 parameters and Pydantic models is unclear, making it difficult to know when to use each.
+However, the API has significant complexity concerns for LLM agents. It exposes too many low-level configuration knobs (e.g., `if_contamination`, `dbscan_eps`, `dbscan_min_samples` - Note: These have been replaced with semantic names like `outlier_fraction`, `cluster_radius_m`, `min_cluster_size` in 2025), creating a combinatorial explosion of choices that agents struggle with. The pipeline abstraction also leaks—tools expose intermediate stages (`PointCloudFromSegmentation`, `GrippingPointEstimator`, `point_cloud_filter`), requiring users to understand the full pipeline structure. Additionally, the boundary between ROS2 parameters and Pydantic models is unclear, making it difficult to know when to use each.
 
 The tiered API structure addresses these concerns through:
 
@@ -394,6 +394,21 @@ The tiered API structure addresses these concerns through:
     **Example - Consistent parameter handling improves consistency**: Tools use a standardized `_load_parameters()` method called in `model_post_init()` with parameter prefixes (e.g., `perception.gripping_points.*`, `perception.distance_to_objects.*`). Once users learn this pattern from one tool, they can infer how all tools handle ROS2 parameters—parameters are loaded at initialization with auto-declaration, type checking, and consistent error handling. This eliminates the need to read implementation details to understand parameter handling across different tools.
 
 2. Mid-level components (`components/`) should use semantic parameter names. Configuration classes like `PointCloudFilterConfig` and `GrippingPointEstimatorConfig` should expose parameters that describe outcomes (e.g., `noise_handling="aggressive"`) rather than algorithm names (e.g., `strategy="isolation_forest"`).
+
+    **Note on Domain Correspondence Changes (2025):** The `PointCloudFilterConfig` has been updated to use domain-oriented parameter names and strategy names:
+
+    - **Parameter names**: Algorithm-specific names (`if_contamination`, `lof_n_neighbors`, `dbscan_eps`) replaced with semantic names (`outlier_fraction`, `neighborhood_size`, `cluster_radius_m`)
+    - **Strategy names**: Algorithm names (`"isolation_forest"`, `"dbscan"`, `"lof"`) replaced with domain-oriented names (`"aggressive_outlier_removal"`, `"density_based"`, `"conservative_outlier_removal"`)
+
+    **Potential Controversy**: These changes may be controversial because ML-specific terminology (e.g., `"isolation_forest"`, `if_contamination`) can be more useful to ML engineers who understand the underlying algorithms and want direct control over algorithm parameters. However, the semantic naming approach prioritizes application developers who need to configure perception pipelines without deep ML knowledge. The mapping from semantic names to algorithms is documented in code comments, allowing ML engineers to understand which algorithm is used while keeping the API accessible to non-ML developers.
+
+    **Trade-off**: The tiered API design attempts to balance both needs:
+
+    - **High-level tools**: Use semantic presets (`"precise_grasp"`, `"default_grasp"`) that hide algorithm details
+    - **Mid-level components**: Use semantic parameter names (`outlier_fraction` instead of `if_contamination`) but document algorithm mapping
+    - **Low-level algorithms**: Direct algorithm access remains available for ML engineers who need full control
+
+    This approach improves domain correspondence (API components map clearly to robotics domain concepts) while maintaining access to algorithm-level control for expert users.
 
 3. Results should include confidence and metadata. Tools should return confidence scores, strategy used, and alternative options to help LLM agents make better decisions about retrying or adjusting approaches.
 

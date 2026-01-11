@@ -38,12 +38,12 @@ def test_perception_algorithm_error_basic():
 def test_perception_algorithm_error_with_strategy():
     """Test PerceptionAlgorithmError with strategy."""
     error = PerceptionAlgorithmError(
-        algorithm_stage="filtering", strategy="isolation_forest"
+        algorithm_stage="filtering", strategy="aggressive_outlier_removal"
     )
     assert error.algorithm_stage == "filtering"
-    assert error.strategy == "isolation_forest"
+    assert error.strategy == "aggressive_outlier_removal"
     assert "filtering" in str(error)
-    assert "isolation_forest" in str(error)
+    assert "aggressive_outlier_removal" in str(error)
 
 
 def test_perception_algorithm_error_with_suggestion():

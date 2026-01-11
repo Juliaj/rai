@@ -104,10 +104,10 @@ def test_point_cloud_filter():
 
     clouds = [noisy_cloud]
 
-    # Test DBSCAN filtering
+    # Test density-based filtering (maps to DBSCAN)
     filter_dbscan = PointCloudFilter(
         config=PointCloudFilterConfig(
-            strategy="dbscan", dbscan_eps=0.5, dbscan_min_samples=5
+            strategy="density_based", cluster_radius_m=0.5, min_cluster_size=5
         )
     )
     filtered_dbscan = filter_dbscan.run(clouds)
@@ -120,16 +120,16 @@ def test_point_cloud_filter():
     # Test with too few points (should return original)
     small_cloud = np.array([[1, 1, 1], [2, 2, 2]], dtype=np.float32)
     filter_small = PointCloudFilter(
-        config=PointCloudFilterConfig(strategy="dbscan", min_points=20)
+        config=PointCloudFilterConfig(strategy="density_based", min_points=20)
     )
     filtered_small = filter_small.run([small_cloud])
 
     assert len(filtered_small) == 1
     np.testing.assert_array_equal(filtered_small[0], small_cloud)
 
-    # Test kmeans_largest_cluster strategy
+    # Test cluster-based strategy (maps to KMeans)
     filter_kmeans = PointCloudFilter(
-        config=PointCloudFilterConfig(strategy="kmeans_largest_cluster", kmeans_k=2)
+        config=PointCloudFilterConfig(strategy="cluster_based", num_clusters=2)
     )
     filtered_kmeans = filter_kmeans.run(clouds)
 

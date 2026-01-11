@@ -86,37 +86,80 @@ class GrippingPointEstimatorConfig(BaseModel):
 
 
 class PointCloudFilterConfig(BaseModel):
-    strategy: Literal["dbscan", "kmeans_largest_cluster", "isolation_forest", "lof"] = (
-        Field(
-            default="isolation_forest",
-            description="Clustering strategy for filtering point cloud outliers",
-        )
+    """Configuration for point cloud filtering with domain-oriented parameters.
+
+    This config uses semantic parameter names that map to robotics domain concepts
+    rather than exposing algorithm-specific details. The strategy parameter selects
+    the filtering approach, and other parameters control behavior in domain terms.
+
+    Strategy mapping to algorithms:
+    - "density_based": Uses DBSCAN algorithm for density-based clustering
+    - "cluster_based": Uses KMeans algorithm to find largest cluster
+    - "aggressive_outlier_removal": Uses Isolation Forest for aggressive noise removal
+    - "conservative_outlier_removal": Uses Local Outlier Factor for conservative noise removal
+    """
+
+    strategy: Literal[
+        "density_based",
+        "cluster_based",
+        "aggressive_outlier_removal",
+        "conservative_outlier_removal",
+    ] = Field(
+        default="aggressive_outlier_removal",
+        description=(
+            "Filtering strategy for removing outliers from point clouds. "
+            "Options: 'density_based' (DBSCAN), 'cluster_based' (KMeans), "
+            "'aggressive_outlier_removal' (Isolation Forest), "
+            "'conservative_outlier_removal' (Local Outlier Factor)"
+        ),
     )
     min_points: int = Field(
         default=20, description="Minimum number of points required for filtering"
     )
-    # DBSCAN
-    dbscan_eps: float = Field(
-        default=0.02, description="DBSCAN epsilon parameter for neighborhood radius"
+    # Semantic parameters that map to algorithm-specific settings
+    cluster_radius_m: float = Field(
+        default=0.02,
+        description=(
+            "Neighborhood radius in meters for density-based clustering. "
+            "Maps to DBSCAN eps parameter when strategy='density_based'"
+        ),
     )
-    dbscan_min_samples: int = Field(
-        default=10, description="DBSCAN minimum samples in neighborhood"
+    min_cluster_size: int = Field(
+        default=10,
+        description=(
+            "Minimum number of points required to form a cluster. "
+            "Maps to DBSCAN min_samples when strategy='density_based'"
+        ),
     )
-    # KMeans
-    kmeans_k: int = Field(default=2, description="Number of clusters for KMeans")
-    # Isolation Forest
-    if_max_samples: int | float | Literal["auto"] = Field(
-        default="auto", description="Maximum samples for Isolation Forest"
+    num_clusters: int = Field(
+        default=2,
+        description=(
+            "Number of clusters to identify. "
+            "Maps to KMeans n_clusters when strategy='cluster_based'"
+        ),
     )
-    if_contamination: float = Field(
-        default=0.05, description="Contamination rate for Isolation Forest"
+    max_samples: int | float | Literal["auto"] = Field(
+        default="auto",
+        description=(
+            "Maximum number of samples to use for outlier detection. "
+            "Maps to Isolation Forest max_samples when strategy='aggressive_outlier_removal'. "
+            "Use 'auto' for automatic selection."
+        ),
     )
-    # LOF
-    lof_n_neighbors: int = Field(
-        default=20, description="Number of neighbors for Local Outlier Factor"
+    outlier_fraction: float = Field(
+        default=0.05,
+        description=(
+            "Expected fraction of outliers in the point cloud (0.0 to 1.0). "
+            "Maps to Isolation Forest contamination when strategy='aggressive_outlier_removal', "
+            "or Local Outlier Factor contamination when strategy='conservative_outlier_removal'"
+        ),
     )
-    lof_contamination: float = Field(
-        default=0.05, description="Contamination rate for Local Outlier Factor"
+    neighborhood_size: int = Field(
+        default=20,
+        description=(
+            "Number of neighbors to consider for local density estimation. "
+            "Maps to Local Outlier Factor n_neighbors when strategy='conservative_outlier_removal'"
+        ),
     )
 
 
@@ -520,13 +563,17 @@ class GrippingPointEstimator:
 
 
 class PointCloudFilter:
-    """Filter segmented point clouds using various sklearn strategies.
+    """Filter segmented point clouds using domain-oriented filtering strategies.
 
-    Strategies:
-      - "dbscan": keep the largest DBSCAN cluster (exclude label -1)
-      - "kmeans_largest_cluster": keep the largest KMeans cluster
-      - "isolation_forest": keep inliers (pred == 1)
-      - "lof": keep inliers (pred == 1)
+    This class provides semantic filtering strategies that map to underlying algorithms:
+
+    - "density_based": Uses DBSCAN for density-based clustering, keeps largest cluster
+    - "cluster_based": Uses KMeans clustering, keeps largest cluster
+    - "aggressive_outlier_removal": Uses Isolation Forest for aggressive noise removal
+    - "conservative_outlier_removal": Uses Local Outlier Factor for conservative noise removal
+
+    All strategies use domain-oriented parameters (e.g., cluster_radius_m, outlier_fraction)
+    rather than exposing algorithm-specific details.
     """
 
     def __init__(self, config: PointCloudFilterConfig) -> None:
@@ -568,30 +615,47 @@ class PointCloudFilter:
         return labels == dominant
 
     def _filter_dbscan(self, pts: NDArray[np.float32]) -> NDArray[np.float32]:
+        """Filter using DBSCAN density-based clustering.
+
+        Maps semantic parameters:
+        - cluster_radius_m -> DBSCAN eps
+        - min_cluster_size -> DBSCAN min_samples
+        """
         from sklearn.cluster import DBSCAN  # type: ignore[reportMissingImports]
 
         if not self._check_min_points(pts):
             return pts
 
         db = DBSCAN(
-            eps=self.config.dbscan_eps, min_samples=self.config.dbscan_min_samples
+            eps=self.config.cluster_radius_m, min_samples=self.config.min_cluster_size
         )
         labels = cast(NDArray[np.int64], db.fit_predict(pts))  # type: ignore[no-any-return]
         mask = self._get_largest_cluster(labels)
         return self._apply_mask_or_fallback(pts, mask)
 
     def _filter_kmeans_largest(self, pts: NDArray[np.float32]) -> NDArray[np.float32]:
+        """Filter using KMeans clustering, keeping largest cluster.
+
+        Maps semantic parameters:
+        - num_clusters -> KMeans n_clusters
+        """
         from sklearn.cluster import KMeans  # type: ignore[reportMissingImports]
 
-        if not self._check_min_points(pts, self.config.kmeans_k):
+        if not self._check_min_points(pts, self.config.num_clusters):
             return pts
 
-        kmeans = KMeans(n_clusters=self.config.kmeans_k, n_init="auto")
+        kmeans = KMeans(n_clusters=self.config.num_clusters, n_init="auto")
         labels = cast(NDArray[np.int64], kmeans.fit_predict(pts))  # type: ignore[no-any-return]
         mask = self._get_largest_cluster(labels)
         return self._apply_mask_or_fallback(pts, mask)
 
     def _filter_isolation_forest(self, pts: NDArray[np.float32]) -> NDArray[np.float32]:
+        """Filter using Isolation Forest for aggressive outlier removal.
+
+        Maps semantic parameters:
+        - max_samples -> Isolation Forest max_samples
+        - outlier_fraction -> Isolation Forest contamination
+        """
         from sklearn.ensemble import (
             IsolationForest,  # type: ignore[reportMissingImports]
         )
@@ -600,8 +664,8 @@ class PointCloudFilter:
             return pts
 
         iso = IsolationForest(
-            max_samples=self.config.if_max_samples,
-            contamination=self.config.if_contamination,
+            max_samples=self.config.max_samples,
+            contamination=self.config.outlier_fraction,
             random_state=42,
         )
         pred = cast(NDArray[np.int64], iso.fit_predict(pts))  # type: ignore[no-any-return]
@@ -609,28 +673,41 @@ class PointCloudFilter:
         return self._apply_mask_or_fallback(pts, mask)
 
     def _filter_lof(self, pts: NDArray[np.float32]) -> NDArray[np.float32]:
+        """Filter using Local Outlier Factor for conservative outlier removal.
+
+        Maps semantic parameters:
+        - neighborhood_size -> Local Outlier Factor n_neighbors
+        - outlier_fraction -> Local Outlier Factor contamination
+        """
         from sklearn.neighbors import (
             LocalOutlierFactor,  # type: ignore[reportMissingImports]
         )
 
-        if not self._check_min_points(pts, self.config.lof_n_neighbors + 1):
+        if not self._check_min_points(pts, self.config.neighborhood_size + 1):
             return pts
 
         lof = LocalOutlierFactor(
-            n_neighbors=self.config.lof_n_neighbors,
-            contamination=self.config.lof_contamination,
+            n_neighbors=self.config.neighborhood_size,
+            contamination=self.config.outlier_fraction,
         )
         pred = cast(NDArray[np.int64], lof.fit_predict(pts))  # type: ignore[no-any-return]
         mask = pred == 1  # 1 = inlier, -1 = outlier
         return self._apply_mask_or_fallback(pts, mask)
 
     def _get_strategy_method(self):
-        """Get the filter strategy method based on config."""
+        """Get the filter strategy method based on config.
+
+        Maps semantic strategy names to algorithm implementations:
+        - "density_based" -> DBSCAN algorithm
+        - "cluster_based" -> KMeans algorithm
+        - "aggressive_outlier_removal" -> Isolation Forest algorithm
+        - "conservative_outlier_removal" -> Local Outlier Factor algorithm
+        """
         strategy_map = {
-            "dbscan": self._filter_dbscan,
-            "kmeans_largest_cluster": self._filter_kmeans_largest,
-            "isolation_forest": self._filter_isolation_forest,
-            "lof": self._filter_lof,
+            "density_based": self._filter_dbscan,
+            "cluster_based": self._filter_kmeans_largest,
+            "aggressive_outlier_removal": self._filter_isolation_forest,
+            "conservative_outlier_removal": self._filter_lof,
         }
         return strategy_map.get(self.config.strategy, lambda pts: pts)
 

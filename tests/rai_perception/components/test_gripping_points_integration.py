@@ -202,9 +202,9 @@ def main(
 
     if filter_config is None:
         filter_config = {
-            "strategy": "isolation_forest",
-            "if_max_samples": "auto",
-            "if_contamination": 0.05,
+            "strategy": "aggressive_outlier_removal",
+            "max_samples": "auto",
+            "outlier_fraction": 0.05,
         }
 
     services = ["/segmentation", "/detection"]
@@ -324,8 +324,8 @@ def test_gripping_points_maciej_demo(strategy):
             "distance_threshold_m": 0.008,
         },
         filter_config={
-            "strategy": "isolation_forest",
-            "if_max_samples": "auto",
-            "if_contamination": 0.05,
+            "strategy": "aggressive_outlier_removal",
+            "max_samples": "auto",
+            "outlier_fraction": 0.05,
         },
     )
