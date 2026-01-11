@@ -269,19 +269,24 @@ class TestGetDistanceToObjectsTool:
         mock_client.wait_for_service.return_value = True
         mock_connector.node.create_client.return_value = mock_client
 
-        # Set ROS2 parameters
+        # Set ROS2 parameters with prefix
         mock_connector.node.set_parameters(
             [
                 Parameter(
-                    "outlier_sigma_threshold",
+                    "perception.distance_to_objects.outlier_sigma_threshold",
                     rclpy.parameter.Parameter.Type.DOUBLE,
                     1.0,
                 ),
                 Parameter(
-                    "conversion_ratio", rclpy.parameter.Parameter.Type.DOUBLE, 0.001
+                    "perception.distance_to_objects.conversion_ratio",
+                    rclpy.parameter.Parameter.Type.DOUBLE,
+                    0.001,
                 ),
             ]
         )
+
+        # Load parameters (model_construct doesn't call model_post_init)
+        distance_tool._load_parameters()
 
         # Service name parameter not set, so will use default
         # Other parameters are already set via set_parameters above

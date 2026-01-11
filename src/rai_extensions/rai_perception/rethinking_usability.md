@@ -291,7 +291,7 @@ rai_perception/
 │   ├── detection_publisher.py # ROS2 node: subscribes to camera images, calls detection service, publishes detections
 │   ├── exceptions.py         # Perception-specific exceptions with rich error metadata for LLM agents
 │   │                         # Exceptions: PerceptionError, PerceptionAlgorithmError, PerceptionValidationError
-│   ├── perception_presets.py # Semantic preset definitions: "high", "medium", "low", "top_down", "centroid"
+│   ├── perception_presets.py # Semantic preset definitions: "default_grasp", "precise_grasp", "top_grasp"
 │   │                         # API: get_preset(), apply_preset(), list_presets()
 │   │                         # Note: General config utilities (loader, merger, get_param_value) are in rai_core
 │   └── gripping_points.py    # Point cloud processing components: PointCloudFromSegmentation, PointCloudFilter, GrippingPointEstimator
@@ -355,7 +355,7 @@ The configuration system follows a multi-tier approach with clear separation of 
 
 -   `rai.communication.ros2.get_param_value()` (in `rai_core/rai/communication/ros2/`): Helper function for extracting ROS2 parameter values with automatic type conversion.
 
--   `components/perception_presets.py`: Semantic presets implemented. Provides presets: "high", "medium", "low", "top_down", "centroid" that map to component configs. Required for high-level tool API simplification.
+-   `components/perception_presets.py`: Semantic presets implemented. Provides presets: "default_grasp", "precise_grasp", "top_grasp" that map to component configs. Required for high-level tool API simplification.
 
 **Implementation steps:**
 
@@ -363,7 +363,7 @@ The configuration system follows a multi-tier approach with clear separation of 
 2. Configuration Infrastructure: ✅ Implemented:
     - `rai.config.loader` (in `rai_core/rai/config/`): Unified YAML/Python config loading to replace manual loading in nodes
     - `rai.config.merger` (in `rai_core/rai/config/`): Config merging with precedence (defaults → ROS2 params → overrides)
-    - `components/perception_presets.py`: Semantic presets for high-level tools (quality="high", approach="top_down")
+    - `components/perception_presets.py`: Semantic presets for high-level tools (quality="precise_grasp", approach="top_grasp")
     - `components/exceptions.py`: Perception-specific exceptions with rich metadata
 3. Component Migration: ✅ Partially implemented, needs migration:
     - `components/exceptions.py`: ✅ Implemented
@@ -385,7 +385,13 @@ However, the API has significant complexity concerns for LLM agents. It exposes 
 
 The tiered API structure addresses these concerns through:
 
-1. High-level tools (`tools/`) should use named presets over raw parameters. Instead of exposing all algorithm parameters, tools like `GetObjectGrippingPointsTool` should support semantic presets (e.g., `quality="high"`, `approach="top_down"`) that internally map to appropriate component configurations.
+1. High-level tools (`tools/`) should use named presets over raw parameters. Instead of exposing all algorithm parameters, tools like `GetObjectGrippingPointsTool` should support semantic presets (e.g., `quality="precise_grasp"`, `approach="top_grasp"`) that internally map to appropriate component configurations.
+
+    **Example - Presets improve penetrability**: The `perception_presets.py` module demonstrates how presets make component relationships discoverable. Users can call `list_presets()` to see available options (`["default_grasp", "precise_grasp", "top_grasp"]`), and preset names like `"precise_grasp"` are self-documenting—no need to read implementation to understand what they do. The module-level docstring explicitly documents the component pipeline flow (`PointCloudFromSegmentation → PointCloudFilter → GrippingPointEstimator`), making relationships discoverable without inspecting code. This addresses the penetrability dimension: users can explore and understand API components without reading implementation details.
+
+    **Example - Consistent naming improves consistency**: Input schema classes follow the pattern `{ToolName}Input` (e.g., `GetObjectGrippingPointsToolInput`, `GetDetectionToolInput`, `GetDistanceToObjectsInput`). Once users learn this pattern, they can infer all input schema names without looking them up. This addresses the consistency dimension: users can apply knowledge from one part of the API to understand other parts.
+
+    **Example - Consistent parameter handling improves consistency**: Tools use a standardized `_load_parameters()` method called in `model_post_init()` with parameter prefixes (e.g., `perception.gripping_points.*`, `perception.distance_to_objects.*`). Once users learn this pattern from one tool, they can infer how all tools handle ROS2 parameters—parameters are loaded at initialization with auto-declaration, type checking, and consistent error handling. This eliminates the need to read implementation details to understand parameter handling across different tools.
 
 2. Mid-level components (`components/`) should use semantic parameter names. Configuration classes like `PointCloudFilterConfig` and `GrippingPointEstimatorConfig` should expose parameters that describe outcomes (e.g., `noise_handling="aggressive"`) rather than algorithm names (e.g., `strategy="isolation_forest"`).
 

@@ -21,12 +21,26 @@ from .exceptions import (
     PerceptionError,
     PerceptionValidationError,
 )
+from .gripping_points import (
+    GrippingPointEstimator,
+    GrippingPointEstimatorConfig,
+    PointCloudFilter,
+    PointCloudFilterConfig,
+    PointCloudFromSegmentation,
+    PointCloudFromSegmentationConfig,
+)
 from .perception_presets import apply_preset, get_preset, list_presets
 
 __all__ = [
+    "GrippingPointEstimator",
+    "GrippingPointEstimatorConfig",
     "PerceptionAlgorithmError",
     "PerceptionError",
     "PerceptionValidationError",
+    "PointCloudFilter",
+    "PointCloudFilterConfig",
+    "PointCloudFromSegmentation",
+    "PointCloudFromSegmentationConfig",
     "apply_preset",
     "get_config_path",
     "get_preset",

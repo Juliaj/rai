@@ -11,6 +11,29 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Gripping points extraction components and pipeline.
+
+This module provides components for extracting gripping points from segmented objects:
+
+**Component Pipeline:**
+    PointCloudFromSegmentation → PointCloudFilter → GrippingPointEstimator
+
+**Components:**
+    - PointCloudFromSegmentation: Extracts segmented point clouds from camera/depth data
+    - PointCloudFilter: Filters outliers from point clouds using clustering/outlier detection
+    - GrippingPointEstimator: Estimates gripping points from filtered point clouds
+
+**Pipeline Composition:**
+    Use GrippingPointsPipeline for a composed API that makes the data flow explicit.
+    Individual components can also be used independently for progressive evaluation.
+
+**Configuration:**
+    Each component has a corresponding Config class:
+    - PointCloudFromSegmentationConfig
+    - PointCloudFilterConfig
+    - GrippingPointEstimatorConfig
+"""
+
 import time
 from typing import List, Literal, Optional, cast
 

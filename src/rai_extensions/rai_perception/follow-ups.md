@@ -46,3 +46,19 @@ This prevents easy migration to other models (e.g., YOLO) without code changes.
 -   Service adapter logic (~50-100 lines)
 -   Tool refactoring (~100-150 lines)
 -   Model parameter registry extension
+
+## Progressive Evaluation: GetDistanceToObjectsTool
+
+**Measure:** [Progressive Evaluation](docs/api_design_considerations.md#progressive-evaluation-ability-to-test-partially-completed-code)
+
+**Module:** `tools/gdino_tools.py` - `GetDistanceToObjectsTool`
+
+**Issue:** Multi-stage pipeline (detection → depth extraction → distance calculation) lacks ability to test or inspect intermediate stages, making debugging difficult when distance results are incorrect.
+
+**Proposed:** Add optional `debug` parameter to expose intermediate results:
+
+-   Publish detection bounding boxes to ROS2 topic for visualization
+-   Log detection confidence scores and counts per stage
+-   Optional depth ROI visualization to debug bounding box alignment and outlier filtering
+
+**Scope:** Medium effort (~145-190 lines), similar to `gripping_points_tools.py` debug mode implementation.

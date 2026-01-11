@@ -36,6 +36,7 @@ from rai_perception.components.gripping_points import (
     PointCloudFromSegmentationConfig,
     _publish_gripping_point_debug_data,
 )
+from rai_perception.components.perception_presets import apply_preset
 from rai_perception.components.topic_utils import discover_camera_topics
 
 # Parameter prefix for ROS2 configuration
@@ -197,10 +198,13 @@ class GetObjectGrippingPointsTool(BaseROS2Tool):
         # These are excluded from tool schema because LangChain only uses args_schema for that
         if self.segmentation_config is None:
             self.segmentation_config = PointCloudFromSegmentationConfig()
-        if self.estimator_config is None:
-            self.estimator_config = GrippingPointEstimatorConfig()
-        if self.filter_config is None:
-            self.filter_config = PointCloudFilterConfig()
+        if self.estimator_config is None or self.filter_config is None:
+            # Use default_grasp preset if configs not provided
+            filter_config, estimator_config = apply_preset("default_grasp")
+            if self.filter_config is None:
+                self.filter_config = filter_config
+            if self.estimator_config is None:
+                self.estimator_config = estimator_config
 
         self._load_parameters()
         self._validate_topics_early()

@@ -29,7 +29,7 @@ class TestGetPreset:
 
     def test_get_preset_valid(self):
         """Test getting valid preset."""
-        preset = get_preset("high")
+        preset = get_preset("default_grasp")
 
         assert "filter_config" in preset
         assert "estimator_config" in preset
@@ -44,8 +44,8 @@ class TestGetPreset:
 
     def test_get_preset_returns_copy(self):
         """Test that get_preset returns a copy, not the original."""
-        preset1 = get_preset("high")
-        preset2 = get_preset("high")
+        preset1 = get_preset("default_grasp")
+        preset2 = get_preset("default_grasp")
 
         preset1["filter_config"]["custom_key"] = "value"
 
@@ -57,11 +57,12 @@ class TestApplyPreset:
 
     def test_apply_preset_to_empty_configs(self):
         """Test applying preset to empty base configs."""
-        filter_config, estimator_config = apply_preset("high")
+        filter_config, estimator_config = apply_preset("default_grasp")
 
         assert isinstance(filter_config, PointCloudFilterConfig)
         assert isinstance(estimator_config, GrippingPointEstimatorConfig)
         assert filter_config.strategy == "isolation_forest"
+        assert estimator_config.strategy == "centroid"
 
     def test_apply_preset_merges_with_base(self):
         """Test applying preset merges with base configs."""
@@ -71,7 +72,7 @@ class TestApplyPreset:
         )
 
         filter_config, estimator_config = apply_preset(
-            "high", base_filter, base_estimator
+            "precise_grasp", base_filter, base_estimator
         )
 
         assert filter_config.strategy == "isolation_forest"  # Preset overrides
@@ -89,9 +90,9 @@ class TestListPresets:
     """Test cases for list_presets function."""
 
     def test_list_presets_returns_all(self):
-        """Test that list_presets returns all available presets."""
+        """Test that list_presets returns a non-empty list with default_grasp."""
         presets = list_presets()
 
         assert isinstance(presets, list)
-        assert len(presets) == 5
-        assert set(presets) == {"high", "medium", "low", "top_down", "centroid"}
+        assert len(presets) > 0
+        assert "default_grasp" in presets

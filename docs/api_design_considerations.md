@@ -31,7 +31,7 @@ This document synthesizes research on API usability and LLM-compatible API desig
 The [Cognitive Dimensions Framework](#cognitive-dimensions-framework) provides a systematic way to evaluate API design. Key dimensions may be relevant to RAI API evaluation:
 
 -   Abstraction Level: Range of abstraction exposed and usable by target developers
--   : Ability to test partially completed code
+-   Progressive Evaluation: Ability to test partially completed code
 -   Penetrability: Ease of exploring and understanding API components
 -   Consistency: How much can be inferred once part of the API is learned
 -   Domain Correspondence: How clearly API components map to the robotics domain

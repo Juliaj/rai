@@ -261,6 +261,93 @@ If you see errors like "Could not find transform from camera_link to base_link",
 2. TF tree is being published (check `ros2 topic echo /tf` or `/tf_static`)
 3. Parameters are set before tool initialization
 
+## Breaking Change: GetDistanceToObjectsTool Parameter Prefix
+
+**Date**: January 2026  
+**Version**: Breaking change in rai_perception
+
+### Summary
+
+`GetDistanceToObjectsTool` now uses prefixed ROS2 parameters for consistency with other tools. Parameters are loaded at initialization instead of during `_run()`.
+
+**Parameter prefix:**
+
+-   Old: No prefix (bare parameter names)
+-   New: `"perception.distance_to_objects"`
+
+**Parameter names:**
+
+-   Old: `"outlier_sigma_threshold"`, `"conversion_ratio"`
+-   New: `"perception.distance_to_objects.outlier_sigma_threshold"`, `"perception.distance_to_objects.conversion_ratio"`
+
+### Why This Change?
+
+1. **Consistency**: All tools now use parameter prefixes for clear ownership
+2. **Initialization**: Parameters loaded at tool creation, not during execution
+3. **Auto-declaration**: Parameters auto-declared with defaults if not set
+
+### What Changed?
+
+#### Parameter Loading
+
+Parameters are now loaded in `model_post_init()` via `_load_parameters()` method, matching the pattern used by `GetObjectGrippingPointsTool`.
+
+#### Parameter Names
+
+All parameters now use the `perception.distance_to_objects` prefix:
+
+-   `perception.distance_to_objects.outlier_sigma_threshold` (default: `1.0`)
+-   `perception.distance_to_objects.conversion_ratio` (default: `0.001`)
+
+### Migration Steps
+
+#### Update Parameter Declarations
+
+**Old code:**
+
+```python
+node.declare_parameter("outlier_sigma_threshold", 1.0)
+node.declare_parameter("conversion_ratio", 0.001)
+```
+
+**New code:**
+
+```python
+node.declare_parameter("perception.distance_to_objects.outlier_sigma_threshold", 1.0)
+node.declare_parameter("perception.distance_to_objects.conversion_ratio", 0.001)
+```
+
+#### Launch Files
+
+Update launch files to use prefixed parameter names:
+
+```python
+from launch_ros.actions import Node
+
+Node(
+    package="your_package",
+    executable="your_node",
+    parameters=[{
+        "perception.distance_to_objects.outlier_sigma_threshold": 1.0,
+        "perception.distance_to_objects.conversion_ratio": 0.001,
+    }]
+)
+```
+
+### Backward Compatibility
+
+**Auto-declaration**: If old parameter names are not found, the tool will auto-declare new prefixed parameters with defaults. However, to avoid confusion, update your code to use the new parameter names.
+
+**Default values remain the same:**
+
+-   `outlier_sigma_threshold`: `1.0`
+-   `conversion_ratio`: `0.001`
+
+### Files Updated
+
+-   `rai_perception/tools/gdino_tools.py` - Added `_load_parameters()` and parameter prefix
+-   `tests/rai_perception/tools/test_gdino_tools.py` - Updated to use prefixed parameters
+
 ### Questions?
 
 If you encounter issues:
