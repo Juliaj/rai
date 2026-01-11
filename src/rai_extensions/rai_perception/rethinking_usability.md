@@ -94,6 +94,7 @@ Multi-tier abstraction with significant complexity:
 3. **Hidden dependencies**: Tool initialization depends on ROS2 parameters that must be set before tool creation—no clear error if missing
 4. **Pipeline complexity**: `GetObjectGrippingPointsTool` orchestrates 4-stage pipeline (detection → segmentation → point cloud → filtering → estimation) with no visibility into intermediate stages
 5. **Progressive evaluation difficulty**: Cannot test individual pipeline stages—must run full pipeline to see results
+    - Partial solution: Debug mode (`debug=True`) added to `GetObjectGrippingPointsTool` publishes intermediate results to ROS2 topics and logs stage-level metadata, enabling visualization of pipeline stages in RVIZ. Next step: Extend debug mode to other tools and consider exposing intermediate results as optional return values for programmatic access.
 6. **Parameter discovery**: Configuration options scattered across multiple config classes—no single source of truth for all parameters
 7. **Error messages**: Algorithm-specific errors (e.g., RANSAC failures, filtering edge cases) may not provide actionable guidance
 8. **Domain correspondence gap**: Parameter names like `if_contamination`, `lof_n_neighbors` don't clearly map to perception domain concepts

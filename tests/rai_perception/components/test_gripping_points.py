@@ -158,6 +158,108 @@ class TestGrippingPointEstimator:
         expected = sample_point_cloud.mean(axis=0)
         np.testing.assert_array_almost_equal(result[0], expected, decimal=5)
 
+    def test_estimator_check_min_points_helper(self):
+        """Test _check_min_points helper method."""
+        config = GrippingPointEstimatorConfig(min_points=10)
+        estimator = GrippingPointEstimator(config)
+
+        # Test with sufficient points
+        points = np.random.rand(20, 3).astype(np.float32)
+        result = estimator._check_min_points(points)
+        assert result is None  # Should return None when points are sufficient
+
+        # Test with insufficient points (should return centroid)
+        points = np.random.rand(5, 3).astype(np.float32)
+        result = estimator._check_min_points(points)
+        assert result is not None
+        assert result.shape == (3,)
+        np.testing.assert_array_almost_equal(result, points.mean(axis=0), decimal=5)
+
+    def test_estimator_ransac_plane_detection(self):
+        """Test _ransac_plane_detection helper method."""
+        config = GrippingPointEstimatorConfig(
+            min_points=5,
+            ransac_iterations=50,
+            distance_threshold_m=0.01,
+        )
+        estimator = GrippingPointEstimator(config)
+
+        # Test with planar points
+        points = np.array(
+            [
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 1.0],
+                [0.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [0.5, 0.5, 1.0],
+            ],
+            dtype=np.float32,
+        )
+        mask = estimator._ransac_plane_detection(points)
+        assert mask is not None
+        assert mask.dtype == bool
+        assert mask.shape[0] == points.shape[0]
+        assert np.sum(mask) >= config.min_points
+
+        # Test with insufficient points
+        points = np.random.rand(3, 3).astype(np.float32)
+        mask = estimator._ransac_plane_detection(points)
+        assert mask is None
+
+    def test_estimator_get_strategy_method(self):
+        """Test _get_strategy_method helper."""
+        strategies = ["centroid", "top_plane", "biggest_plane"]
+        for strategy in strategies:
+            config = GrippingPointEstimatorConfig(strategy=strategy)
+            estimator = GrippingPointEstimator(config)
+            method = estimator._get_strategy_method()
+            assert callable(method)
+
+        # Test unknown strategy returns centroid
+        config = GrippingPointEstimatorConfig()
+        config.strategy = "unknown"  # type: ignore
+        estimator = GrippingPointEstimator(config)
+        method = estimator._get_strategy_method()
+        points = np.random.rand(10, 3).astype(np.float32)
+        result = method(points)
+        expected = points.mean(axis=0)
+        np.testing.assert_array_almost_equal(result, expected, decimal=5)
+
+    def test_top_plane_empty_result_fallback(self):
+        """Test top_plane falls back to centroid when no top points found."""
+        # Create points where top percentile filter results in empty set
+        points = np.array(
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype=np.float32
+        )
+        config = GrippingPointEstimatorConfig(
+            strategy="top_plane", top_percentile=0.01, min_points=2
+        )
+        estimator = GrippingPointEstimator(config)
+        result = estimator.run([points])
+
+        assert len(result) == 1
+        # Should fall back to centroid
+        expected = points.mean(axis=0)
+        np.testing.assert_array_almost_equal(result[0], expected, decimal=5)
+
+    def test_biggest_plane_empty_inliers_fallback(self):
+        """Test biggest_plane falls back to centroid when no inliers found."""
+        # Create non-planar points that won't form a good plane
+        points = np.random.rand(20, 3).astype(np.float32) * 10.0
+        config = GrippingPointEstimatorConfig(
+            strategy="biggest_plane",
+            min_points=5,
+            ransac_iterations=10,
+            distance_threshold_m=0.001,  # Very strict threshold
+        )
+        estimator = GrippingPointEstimator(config)
+        result = estimator.run([points])
+
+        assert len(result) == 1
+        # Should fall back to centroid when plane detection fails
+        expected = points.mean(axis=0)
+        np.testing.assert_array_almost_equal(result[0], expected, decimal=5)
+
 
 class TestPointCloudFilter:
     """Test cases for PointCloudFilter."""
@@ -263,3 +365,100 @@ class TestPointCloudFilter:
 
         assert len(result) == 1
         np.testing.assert_array_equal(result[0], sample_point_cloud)
+
+    def test_lof_strategy(self):
+        """Test LOF filtering strategy."""
+        # Create points with outliers
+        inliers = np.random.rand(50, 3).astype(np.float32) * 0.1
+        outliers = np.array(
+            [[10.0, 10.0, 10.0], [-10.0, -10.0, -10.0]], dtype=np.float32
+        )
+        points = np.vstack([inliers, outliers])
+
+        config = PointCloudFilterConfig(
+            strategy="lof",
+            min_points=10,
+            lof_n_neighbors=20,
+            lof_contamination=0.1,
+        )
+        filter_obj = PointCloudFilter(config)
+        result = filter_obj.run([points])
+
+        assert len(result) == 1
+        # Should have fewer points (outliers removed)
+        assert result[0].shape[0] < points.shape[0]
+
+    def test_filter_check_min_points_helper(self):
+        """Test _check_min_points helper method."""
+        config = PointCloudFilterConfig(min_points=10)
+        filter_obj = PointCloudFilter(config)
+
+        # Test with sufficient points
+        points = np.random.rand(20, 3).astype(np.float32)
+        assert filter_obj._check_min_points(points) is True
+
+        # Test with insufficient points
+        points = np.random.rand(5, 3).astype(np.float32)
+        assert filter_obj._check_min_points(points) is False
+
+        # Test with custom minimum requirement
+        assert filter_obj._check_min_points(points, min_required=15) is False
+        assert filter_obj._check_min_points(points, min_required=3) is True
+
+    def test_filter_apply_mask_or_fallback_helper(self):
+        """Test _apply_mask_or_fallback helper method."""
+        config = PointCloudFilterConfig()
+        filter_obj = PointCloudFilter(config)
+
+        points = np.array(
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]], dtype=np.float32
+        )
+
+        # Test with valid mask
+        mask = np.array([True, False, True], dtype=bool)
+        result = filter_obj._apply_mask_or_fallback(points, mask)
+        assert result.shape[0] == 2
+        np.testing.assert_array_equal(result, points[mask])
+
+        # Test with empty mask (should return original)
+        mask = np.array([False, False, False], dtype=bool)
+        result = filter_obj._apply_mask_or_fallback(points, mask)
+        np.testing.assert_array_equal(result, points)
+
+    def test_filter_get_largest_cluster_helper(self):
+        """Test _get_largest_cluster helper method."""
+        config = PointCloudFilterConfig()
+        filter_obj = PointCloudFilter(config)
+
+        # Test with valid labels
+        labels = np.array([0, 0, 0, 1, 1, -1], dtype=np.int64)
+        mask = filter_obj._get_largest_cluster(labels)
+        assert np.sum(mask) == 3  # Largest cluster has 3 points
+
+        # Test with empty labels
+        labels = np.array([], dtype=np.int64)
+        mask = filter_obj._get_largest_cluster(labels)
+        assert mask.shape[0] == 0
+
+        # Test with all outliers (label -1)
+        labels = np.array([-1, -1, -1], dtype=np.int64)
+        mask = filter_obj._get_largest_cluster(labels)
+        assert np.sum(mask) == 0
+
+    def test_filter_get_strategy_method(self):
+        """Test _get_strategy_method helper."""
+        strategies = ["dbscan", "kmeans_largest_cluster", "isolation_forest", "lof"]
+        for strategy in strategies:
+            config = PointCloudFilterConfig(strategy=strategy)
+            filter_obj = PointCloudFilter(config)
+            method = filter_obj._get_strategy_method()
+            assert callable(method)
+
+        # Test unknown strategy returns identity function
+        config = PointCloudFilterConfig()
+        config.strategy = "unknown"  # type: ignore
+        filter_obj = PointCloudFilter(config)
+        method = filter_obj._get_strategy_method()
+        points = np.random.rand(10, 3).astype(np.float32)
+        result = method(points)
+        np.testing.assert_array_equal(result, points)

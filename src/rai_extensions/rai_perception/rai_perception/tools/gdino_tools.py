@@ -179,8 +179,6 @@ class GetDetectionTool(GroundingDinoBaseTool):
         else:
             return "Service call failed. Can't get detections."
 
-        return "Failed to get detection"
-
 
 class GetDistanceToObjectsTool(GroundingDinoBaseTool):
     name: str = "GetDistanceToObjectsTool"

@@ -243,13 +243,17 @@ class PointCloudFromSegmentation:
 
         return get_segmentation_service_name(self.connector)
 
+    def _create_service_client(self, service_type, service_name: str):
+        """Create a service client for the given service type and name."""
+        from rai_perception.components.service_utils import create_service_client
+
+        return create_service_client(self.connector, service_type, service_name)
+
     def _call_gdino_node(
         self, camera_img_message: sensor_msgs.msg.Image, object_name: str
     ) -> Future:
-        from rai_perception.components.service_utils import create_service_client
-
         service_name = self._get_detection_service_name()
-        cli = create_service_client(self.connector, RAIGroundingDino, service_name)  # type: ignore[reportUnknownMemberType]
+        cli = self._create_service_client(RAIGroundingDino, service_name)  # type: ignore[reportUnknownMemberType]
         req = RAIGroundingDino.Request()
         req.source_img = camera_img_message
         req.classes = object_name
@@ -260,10 +264,8 @@ class PointCloudFromSegmentation:
     def _call_gsam_node(
         self, camera_img_message: sensor_msgs.msg.Image, data: RAIGroundingDino.Response
     ) -> Future:
-        from rai_perception.components.service_utils import create_service_client
-
         service_name = self._get_segmentation_service_name()
-        cli = create_service_client(self.connector, RAIGroundedSam, service_name)  # type: ignore[reportUnknownMemberType]
+        cli = self._create_service_client(RAIGroundedSam, service_name)  # type: ignore[reportUnknownMemberType]
         req = RAIGroundedSam.Request()
         req.detections = data.detections  # type: ignore[reportUnknownMemberType]
         req.source_img = camera_img_message
@@ -375,19 +377,30 @@ class GrippingPointEstimator:
         self.config = config
 
     def _centroid(self, points: NDArray[np.float32]) -> Optional[NDArray[np.float32]]:
+        """Compute centroid of points."""
         if points.size == 0:
             return None
         return points.mean(axis=0).astype(np.float32)
 
+    def _check_min_points(
+        self, points: NDArray[np.float32]
+    ) -> Optional[NDArray[np.float32]]:
+        """Check if points meet minimum requirement, return centroid fallback if not."""
+        if points.shape[0] < self.config.min_points:
+            return self._centroid(points)
+        return None
+
     def _top_plane_centroid(
         self, points: NDArray[np.float32]
     ) -> Optional[NDArray[np.float32]]:
-        if points.shape[0] < self.config.min_points:
-            return self._centroid(points)
+        fallback = self._check_min_points(points)
+        if fallback is not None:
+            return fallback
+
         z_vals = points[:, 2]
         threshold = np.quantile(z_vals, 1.0 - self.config.top_percentile)
-        mask = z_vals >= threshold
-        top_points = points[mask]
+        top_points = points[z_vals >= threshold]
+
         if top_points.shape[0] == 0:
             return self._centroid(points)
         return top_points.mean(axis=0).astype(np.float32)
@@ -395,48 +408,66 @@ class GrippingPointEstimator:
     def _biggest_plane_centroid(
         self, points: NDArray[np.float32]
     ) -> Optional[NDArray[np.float32]]:
-        # RANSAC plane detection: not restricted to horizontal planes
-        num_points = points.shape[0]
-        if num_points < self.config.min_points:
-            return self._centroid(points)
+        """RANSAC plane detection: find largest plane and return its centroid."""
+        fallback = self._check_min_points(points)
+        if fallback is not None:
+            return fallback
 
-        best_inlier_count = 0
-        best_inlier_mask: Optional[NDArray[np.bool_]] = None
-
-        # Precompute for speed
-        pts64 = points.astype(np.float64, copy=False)
-        threshold = float(self.config.distance_threshold_m)
-
-        rng = np.random.default_rng()
-
-        for _ in range(self.config.ransac_iterations):
-            # Sample 3 unique points
-            idxs = rng.choice(num_points, size=3, replace=False)
-            p0, p1, p2 = pts64[idxs[0]], pts64[idxs[1]], pts64[idxs[2]]
-            v1 = p1 - p0
-            v2 = p2 - p0
-            normal = np.cross(v1, v2)
-            norm_len = np.linalg.norm(normal)
-            if norm_len < 1e-9:
-                continue  # degenerate triplet
-            normal /= norm_len
-            # Distance from points to plane
-            # Plane eq: normal · (x - p0) = 0 -> distance = |normal · (x - p0)|
-            diffs = pts64 - p0
-            dists = np.abs(diffs @ normal)
-            inliers = dists <= threshold
-            count = int(inliers.sum())
-            if count > best_inlier_count:
-                best_inlier_count = count
-                best_inlier_mask = inliers
-
-        if best_inlier_mask is None or best_inlier_count < self.config.min_points:
+        best_inlier_mask = self._ransac_plane_detection(points)
+        if best_inlier_mask is None:
             return self._centroid(points)
 
         inlier_points = points[best_inlier_mask]
         if inlier_points.shape[0] == 0:
             return self._centroid(points)
         return inlier_points.mean(axis=0).astype(np.float32)
+
+    def _ransac_plane_detection(
+        self, points: NDArray[np.float32]
+    ) -> Optional[NDArray[np.bool_]]:
+        """Perform RANSAC plane detection and return inlier mask."""
+        num_points = points.shape[0]
+        pts64 = points.astype(np.float64, copy=False)
+        threshold = float(self.config.distance_threshold_m)
+        rng = np.random.default_rng()
+
+        best_inlier_count = 0
+        best_inlier_mask: Optional[NDArray[np.bool_]] = None
+
+        for _ in range(self.config.ransac_iterations):
+            # Sample 3 unique points
+            idxs = rng.choice(num_points, size=3, replace=False)
+            p0, p1, p2 = pts64[idxs[0]], pts64[idxs[1]], pts64[idxs[2]]
+
+            # Compute plane normal
+            v1, v2 = p1 - p0, p2 - p0
+            normal = np.cross(v1, v2)
+            norm_len = np.linalg.norm(normal)
+            if norm_len < 1e-9:
+                continue  # Degenerate triplet
+            normal /= norm_len
+
+            # Compute distances to plane: |normal · (x - p0)|
+            dists = np.abs((pts64 - p0) @ normal)
+            inliers = dists <= threshold
+            count = int(inliers.sum())
+
+            if count > best_inlier_count:
+                best_inlier_count = count
+                best_inlier_mask = inliers
+
+        if best_inlier_count < self.config.min_points:
+            return None
+        return best_inlier_mask
+
+    def _get_strategy_method(self):
+        """Get the strategy method based on config."""
+        strategy_map = {
+            "centroid": self._centroid,
+            "top_plane": self._top_plane_centroid,
+            "biggest_plane": self._biggest_plane_centroid,
+        }
+        return strategy_map.get(self.config.strategy, self._centroid)
 
     def run(
         self, segmented_point_clouds: list[NDArray[np.float32]]
@@ -451,20 +482,14 @@ class GrippingPointEstimator:
         -------
         list of np.array points [[x, y, z], ...], one per input cloud.
         """
+        strategy_method = self._get_strategy_method()
         gripping_points: list[NDArray[np.float32]] = []
 
         for pts in segmented_point_clouds:
             if pts.size == 0:
                 continue
-            if self.config.strategy == "centroid":
-                gp = self._centroid(pts)
-            elif self.config.strategy == "top_plane":
-                gp = self._top_plane_centroid(pts)
-            elif self.config.strategy == "biggest_plane":
-                gp = self._biggest_plane_centroid(pts)
-            else:
-                gp = self._centroid(pts)
 
+            gp = strategy_method(pts)
             if gp is not None:
                 gripping_points.append(gp.astype(np.float32))
 
@@ -484,89 +509,127 @@ class PointCloudFilter:
     def __init__(self, config: PointCloudFilterConfig) -> None:
         self.config = config
 
+    def _check_min_points(
+        self, pts: NDArray[np.float32], min_required: int = 0
+    ) -> bool:
+        """Check if points meet minimum requirement.
+
+        Args:
+            pts: Point cloud array
+            min_required: Custom minimum requirement. If > 0, overrides config.min_points.
+        """
+        min_threshold = min_required if min_required > 0 else self.config.min_points
+        return pts.shape[0] >= min_threshold
+
+    def _apply_mask_or_fallback(
+        self, pts: NDArray[np.float32], mask: NDArray[np.bool_]
+    ) -> NDArray[np.float32]:
+        """Apply mask to points, return original if mask is empty."""
+        if not np.any(mask):
+            return pts
+        return pts[mask]
+
+    def _get_largest_cluster(self, labels: NDArray[np.int64]) -> NDArray[np.bool_]:
+        """Get mask for the largest cluster from labels."""
+        if labels.size == 0:
+            return np.zeros(0, dtype=bool)
+
+        # For DBSCAN, exclude outliers (label -1)
+        valid = labels >= 0
+        if not np.any(valid):
+            return np.zeros(labels.shape[0], dtype=bool)
+
+        labels_valid = labels[valid]
+        unique_labels, counts = np.unique(labels_valid, return_counts=True)
+        dominant = unique_labels[np.argmax(counts)]
+        return labels == dominant
+
     def _filter_dbscan(self, pts: NDArray[np.float32]) -> NDArray[np.float32]:
         from sklearn.cluster import DBSCAN  # type: ignore[reportMissingImports]
 
-        if pts.shape[0] < self.config.min_points:
+        if not self._check_min_points(pts):
             return pts
+
         db = DBSCAN(
             eps=self.config.dbscan_eps, min_samples=self.config.dbscan_min_samples
         )
         labels = cast(NDArray[np.int64], db.fit_predict(pts))  # type: ignore[no-any-return]
-        if labels.size == 0:
-            return pts
-        valid = labels >= 0
-        if not np.any(valid):
-            return pts
-        labels_valid = labels[valid]
-        unique_labels, counts = np.unique(labels_valid, return_counts=True)
-        dominant = unique_labels[np.argmax(counts)]
-        mask = labels == dominant
-        return pts[mask]
+        mask = self._get_largest_cluster(labels)
+        return self._apply_mask_or_fallback(pts, mask)
 
     def _filter_kmeans_largest(self, pts: NDArray[np.float32]) -> NDArray[np.float32]:
         from sklearn.cluster import KMeans  # type: ignore[reportMissingImports]
 
-        if pts.shape[0] < max(self.config.min_points, self.config.kmeans_k):
+        if not self._check_min_points(pts, self.config.kmeans_k):
             return pts
+
         kmeans = KMeans(n_clusters=self.config.kmeans_k, n_init="auto")
         labels = cast(NDArray[np.int64], kmeans.fit_predict(pts))  # type: ignore[no-any-return]
-        unique_labels, counts = np.unique(labels, return_counts=True)
-        dominant = unique_labels[np.argmax(counts)]
-        mask = labels == dominant
-        return pts[mask]
+        mask = self._get_largest_cluster(labels)
+        return self._apply_mask_or_fallback(pts, mask)
 
     def _filter_isolation_forest(self, pts: NDArray[np.float32]) -> NDArray[np.float32]:
         from sklearn.ensemble import (
             IsolationForest,  # type: ignore[reportMissingImports]
         )
 
-        if pts.shape[0] < self.config.min_points:
+        if not self._check_min_points(pts):
             return pts
+
         iso = IsolationForest(
             max_samples=self.config.if_max_samples,
             contamination=self.config.if_contamination,
             random_state=42,
         )
-        pred = cast(NDArray[np.int64], iso.fit_predict(pts))  # type: ignore[no-any-return]  # 1 inlier, -1 outlier
-        mask = pred == 1
-        if not np.any(mask):
-            return pts
-        return pts[mask]
+        pred = cast(NDArray[np.int64], iso.fit_predict(pts))  # type: ignore[no-any-return]
+        mask = pred == 1  # 1 = inlier, -1 = outlier
+        return self._apply_mask_or_fallback(pts, mask)
 
     def _filter_lof(self, pts: NDArray[np.float32]) -> NDArray[np.float32]:
         from sklearn.neighbors import (
             LocalOutlierFactor,  # type: ignore[reportMissingImports]
         )
 
-        if pts.shape[0] < max(self.config.min_points, self.config.lof_n_neighbors + 1):
+        if not self._check_min_points(pts, self.config.lof_n_neighbors + 1):
             return pts
+
         lof = LocalOutlierFactor(
             n_neighbors=self.config.lof_n_neighbors,
             contamination=self.config.lof_contamination,
         )
-        pred = cast(NDArray[np.int64], lof.fit_predict(pts))  # type: ignore[no-any-return]  # 1 inlier, -1 outlier
-        mask = pred == 1
-        if not np.any(mask):
-            return pts
-        return pts[mask]
+        pred = cast(NDArray[np.int64], lof.fit_predict(pts))  # type: ignore[no-any-return]
+        mask = pred == 1  # 1 = inlier, -1 = outlier
+        return self._apply_mask_or_fallback(pts, mask)
+
+    def _get_strategy_method(self):
+        """Get the filter strategy method based on config."""
+        strategy_map = {
+            "dbscan": self._filter_dbscan,
+            "kmeans_largest_cluster": self._filter_kmeans_largest,
+            "isolation_forest": self._filter_isolation_forest,
+            "lof": self._filter_lof,
+        }
+        return strategy_map.get(self.config.strategy, lambda pts: pts)
 
     def run(
         self, segmented_point_clouds: list[NDArray[np.float32]]
     ) -> list[NDArray[np.float32]]:
+        """Filter each point cloud using the configured strategy.
+
+        Parameters
+        ----------
+        segmented_point_clouds: list of (N, 3) arrays to filter.
+
+        Returns
+        -------
+        list of filtered (N, 3) arrays.
+        """
+        filter_method = self._get_strategy_method()
         filtered: list[NDArray[np.float32]] = []
+
         for pts in segmented_point_clouds:
             if pts.size == 0:
                 continue
-            if self.config.strategy == "dbscan":
-                f = self._filter_dbscan(pts)
-            elif self.config.strategy == "kmeans_largest_cluster":
-                f = self._filter_kmeans_largest(pts)
-            elif self.config.strategy == "isolation_forest":
-                f = self._filter_isolation_forest(pts)
-            elif self.config.strategy == "lof":
-                f = self._filter_lof(pts)
-            else:
-                f = pts
-            filtered.append(f.astype(np.float32, copy=False))
+            filtered.append(filter_method(pts).astype(np.float32, copy=False))
+
         return filtered
