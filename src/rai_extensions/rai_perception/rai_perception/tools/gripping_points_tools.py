@@ -61,8 +61,68 @@ class GetObjectGrippingPointsToolInput(BaseModel):
 
 
 class GetObjectGrippingPointsTool(BaseROS2Tool):
+    """Tool for extracting 3D gripping points from objects using a multi-stage pipeline.
+
+    This tool orchestrates a 3-stage pipeline:
+    1. Point Cloud Extraction: Detects and segments objects, extracts point clouds from depth data
+    2. Point Cloud Filtering: Removes outliers and noise from point clouds
+    3. Gripping Point Estimation: Estimates optimal gripping points from filtered point clouds
+
+    **Service Dependencies:**
+    - Detection Service: Required for object detection (default: "/detection")
+    - Segmentation Service: Required for object segmentation (default: "/segmentation")
+
+    **Pipeline Components:**
+    - PointCloudFromSegmentation: Extracts segmented point clouds from camera/depth data
+    - PointCloudFilter: Filters outliers using configurable strategies
+    - GrippingPointEstimator: Estimates gripping points using configurable strategies
+
+    Use debug=True to publish intermediate pipeline results to ROS2 topics for visualization.
+    """
+
     name: str = "get_object_gripping_points"
-    description: str = "Get gripping points for specified object/objects. Returns 3D coordinates where a robot gripper can grasp the object. Set debug=True to publish intermediate pipeline results to ROS2 topics for visualization in RVIZ (adds overhead, not for production)."
+    description: str = (
+        "Get gripping points for specified object/objects. Returns 3D coordinates where a robot gripper can grasp the object. "
+        "Executes a 3-stage pipeline: (1) Point Cloud Extraction from detection/segmentation, "
+        "(2) Point Cloud Filtering to remove outliers, (3) Gripping Point Estimation. "
+        "Requires detection and segmentation services to be running. "
+        "Set debug=True to publish intermediate pipeline results to ROS2 topics for visualization in RVIZ (adds overhead, not for production)."
+    )
+
+    # Pipeline stages for role expressiveness
+    pipeline_stages: list[dict[str, str]] = [
+        {
+            "stage": "Point Cloud Extraction",
+            "component": "PointCloudFromSegmentation",
+            "description": "Detects objects, segments them, and extracts point clouds from depth data",
+        },
+        {
+            "stage": "Point Cloud Filtering",
+            "component": "PointCloudFilter",
+            "description": "Removes outliers and noise from point clouds using configurable filtering strategies",
+        },
+        {
+            "stage": "Gripping Point Estimation",
+            "component": "GrippingPointEstimator",
+            "description": "Estimates optimal gripping points from filtered point clouds",
+        },
+    ]
+
+    # Service dependencies for role expressiveness
+    required_services: list[dict[str, str]] = [
+        {
+            "service_name": "/detection",
+            "service_type": "DetectionService",
+            "description": "Provides object detection capabilities (e.g., GroundingDINO)",
+            "parameter": "/detection_tool/service_name",
+        },
+        {
+            "service_name": "/segmentation",
+            "service_type": "SegmentationService",
+            "description": "Provides object segmentation capabilities (e.g., Grounded SAM)",
+            "parameter": "/segmentation_tool/service_name",
+        },
+    ]
 
     # Components initialized in model_post_init
     # Using Field(exclude=True) to exclude from serialization, but still get Pydantic validation
@@ -170,6 +230,85 @@ class GetObjectGrippingPointsTool(BaseROS2Tool):
     def segmentation_service_name(self) -> str:
         """Get the segmentation service name used by this tool."""
         return self.point_cloud_from_segmentation._get_segmentation_service_name()
+
+    def get_pipeline_info(self) -> Dict[str, Any]:
+        """Get information about the tool's pipeline stages and components.
+
+        Returns:
+            Dictionary with pipeline stages, component names, and descriptions.
+            Useful for understanding tool behavior and debugging pipeline issues.
+        """
+        return {
+            "pipeline_stages": self.pipeline_stages,
+            "component_classes": {
+                "PointCloudFromSegmentation": "Extracts segmented point clouds from camera/depth data",
+                "PointCloudFilter": "Filters outliers from point clouds using configurable strategies",
+                "GrippingPointEstimator": "Estimates gripping points from filtered point clouds",
+            },
+        }
+
+    def get_service_info(self) -> Dict[str, Any]:
+        """Get information about required ROS2 services and their status.
+
+        Returns:
+            Dictionary with service names, types, descriptions, and current status.
+            Useful for understanding service dependencies and debugging service connection issues.
+        """
+        from rai_perception.components.service_utils import (
+            check_service_available,
+            get_detection_service_name,
+            get_segmentation_service_name,
+        )
+
+        detection_service = get_detection_service_name(self.connector)
+        segmentation_service = get_segmentation_service_name(self.connector)
+
+        return {
+            "required_services": self.required_services,
+            "current_service_names": {
+                "detection": detection_service,
+                "segmentation": segmentation_service,
+            },
+            "service_status": {
+                "detection": {
+                    "name": detection_service,
+                    "available": check_service_available(
+                        self.connector, detection_service
+                    ),
+                },
+                "segmentation": {
+                    "name": segmentation_service,
+                    "available": check_service_available(
+                        self.connector, segmentation_service
+                    ),
+                },
+            },
+        }
+
+    def check_service_dependencies(self) -> Dict[str, bool]:
+        """Check if all required services are available.
+
+        Returns:
+            Dictionary mapping service names to availability status (True/False).
+            Raises no exceptions - returns status for all services.
+        """
+        from rai_perception.components.service_utils import (
+            check_service_available,
+            get_detection_service_name,
+            get_segmentation_service_name,
+        )
+
+        detection_service = get_detection_service_name(self.connector)
+        segmentation_service = get_segmentation_service_name(self.connector)
+
+        return {
+            detection_service: check_service_available(
+                self.connector, detection_service
+            ),
+            segmentation_service: check_service_available(
+                self.connector, segmentation_service
+            ),
+        }
 
     def get_config(self) -> Dict[str, Any]:
         """Get current ROS2 parameter configuration for observability.

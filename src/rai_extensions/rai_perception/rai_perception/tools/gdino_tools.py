@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, NamedTuple, Type
+from typing import Any, Dict, List, NamedTuple, Type
 
 import numpy as np
 import sensor_msgs.msg
@@ -103,6 +103,53 @@ class GroundingDinoBaseTool(BaseTool):
         """Get the detection service name used by this tool."""
         return self._get_detection_service_name()
 
+    def get_service_info(self) -> Dict[str, Any]:
+        """Get information about required ROS2 services and their status.
+
+        Returns:
+            Dictionary with service names, types, descriptions, and current status.
+            Useful for understanding service dependencies and debugging service connection issues.
+        """
+        from rai_perception.components.service_utils import (
+            check_service_available,
+            get_detection_service_name,
+        )
+
+        detection_service = get_detection_service_name(self.connector)
+
+        return {
+            "required_services": self.required_services,
+            "current_service_name": detection_service,
+            "service_status": {
+                "detection": {
+                    "name": detection_service,
+                    "available": check_service_available(
+                        self.connector, detection_service
+                    ),
+                },
+            },
+        }
+
+    def check_service_dependencies(self) -> Dict[str, bool]:
+        """Check if all required services are available.
+
+        Returns:
+            Dictionary mapping service names to availability status (True/False).
+            Raises no exceptions - returns status for all services.
+        """
+        from rai_perception.components.service_utils import (
+            check_service_available,
+            get_detection_service_name,
+        )
+
+        detection_service = get_detection_service_name(self.connector)
+
+        return {
+            detection_service: check_service_available(
+                self.connector, detection_service
+            ),
+        }
+
     def _call_gdino_node(
         self, camera_img_message: sensor_msgs.msg.Image, object_names: list[str]
     ) -> Future:
@@ -158,8 +205,33 @@ class GroundingDinoBaseTool(BaseTool):
 
 
 class GetDetectionTool(GroundingDinoBaseTool):
+    """Tool for detecting objects in camera images using a detection service.
+
+    **Service Dependencies:**
+    - Detection Service: Required for object detection (default: "/detection")
+      Configure via ROS2 parameter: /detection_tool/service_name
+
+    **Pipeline:**
+    - Single-stage: Calls detection service with image and object names
+    - Returns detected objects with bounding boxes and confidence scores
+    """
+
     name: str = "GetDetectionTool"
-    description: str = "A tool for detecting specified objects using a ros2 action. The tool call might take some time to execute and is blocking - you will not be able to check their feedback, only will be informed about the result."
+    description: str = (
+        "A tool for detecting specified objects using a ROS2 detection service. "
+        "Requires a detection service (e.g., DetectionService) to be running. "
+        "The tool call might take some time to execute and is blocking - you will not be able to check their feedback, only will be informed about the result."
+    )
+
+    # Service dependencies for role expressiveness
+    required_services: list[dict[str, str]] = [
+        {
+            "service_name": "/detection",
+            "service_type": "DetectionService",
+            "description": "Provides object detection capabilities (e.g., GroundingDINO)",
+            "parameter": "/detection_tool/service_name",
+        },
+    ]
 
     args_schema: Type[GetDetectionToolInput] = GetDetectionToolInput
 
@@ -184,8 +256,46 @@ class GetDetectionTool(GroundingDinoBaseTool):
 
 
 class GetDistanceToObjectsTool(GroundingDinoBaseTool):
+    """Tool for calculating distances to detected objects using detection service and depth data.
+
+    **Service Dependencies:**
+    - Detection Service: Required for object detection (default: "/detection")
+      Configure via ROS2 parameter: /detection_tool/service_name
+
+    **Pipeline:**
+    - Stage 1: Object Detection - Calls detection service to find objects
+    - Stage 2: Distance Calculation - Uses depth image to compute distances to detected objects
+    """
+
     name: str = "GetDistanceToObjectsTool"
-    description: str = "A tool for calculating distance to specified objects using a ros2 action. The tool call might take some time to execute and is blocking - you will not be able to check their feedback, only will be informed about the result."
+    description: str = (
+        "A tool for calculating distance to specified objects using a ROS2 detection service and depth camera. "
+        "Executes a 2-stage pipeline: (1) Object Detection, (2) Distance Calculation from depth data. "
+        "Requires a detection service (e.g., DetectionService) to be running. "
+        "The tool call might take some time to execute and is blocking - you will not be able to check their feedback, only will be informed about the result."
+    )
+
+    # Service dependencies for role expressiveness
+    required_services: list[dict[str, str]] = [
+        {
+            "service_name": "/detection",
+            "service_type": "DetectionService",
+            "description": "Provides object detection capabilities (e.g., GroundingDINO)",
+            "parameter": "/detection_tool/service_name",
+        },
+    ]
+
+    # Pipeline stages for role expressiveness
+    pipeline_stages: list[dict[str, str]] = [
+        {
+            "stage": "Object Detection",
+            "description": "Calls detection service to find objects in the image",
+        },
+        {
+            "stage": "Distance Calculation",
+            "description": "Uses depth image to compute distances to detected object bounding boxes",
+        },
+    ]
 
     args_schema: Type[GetDistanceToObjectsInput] = GetDistanceToObjectsInput
 
@@ -278,3 +388,61 @@ class GetDistanceToObjectsTool(GroundingDinoBaseTool):
             )
             return f"I have detected the following items in the picture {measurement_string or 'no objects'}"
         return "Failed"
+
+    def get_pipeline_info(self) -> Dict[str, Any]:
+        """Get information about the tool's pipeline stages.
+
+        Returns:
+            Dictionary with pipeline stages and descriptions.
+            Useful for understanding tool behavior and debugging pipeline issues.
+        """
+        return {
+            "pipeline_stages": self.pipeline_stages,
+        }
+
+    def get_service_info(self) -> Dict[str, Any]:
+        """Get information about required ROS2 services and their status.
+
+        Returns:
+            Dictionary with service names, types, descriptions, and current status.
+            Useful for understanding service dependencies and debugging service connection issues.
+        """
+        from rai_perception.components.service_utils import (
+            check_service_available,
+            get_detection_service_name,
+        )
+
+        detection_service = get_detection_service_name(self.connector)
+
+        return {
+            "required_services": self.required_services,
+            "current_service_name": detection_service,
+            "service_status": {
+                "detection": {
+                    "name": detection_service,
+                    "available": check_service_available(
+                        self.connector, detection_service
+                    ),
+                },
+            },
+        }
+
+    def check_service_dependencies(self) -> Dict[str, bool]:
+        """Check if all required services are available.
+
+        Returns:
+            Dictionary mapping service names to availability status (True/False).
+            Raises no exceptions - returns status for all services.
+        """
+        from rai_perception.components.service_utils import (
+            check_service_available,
+            get_detection_service_name,
+        )
+
+        detection_service = get_detection_service_name(self.connector)
+
+        return {
+            detection_service: check_service_available(
+                self.connector, detection_service
+            ),
+        }

@@ -410,6 +410,14 @@ The tiered API structure addresses these concerns through:
 
     This approach improves domain correspondence (API components map clearly to robotics domain concepts) while maintaining access to algorithm-level control for expert users.
 
+    **Note on Role Expressiveness Improvements (2025):** Tools have been enhanced to make pipeline/data flow and service dependencies explicit:
+
+    - **Pipeline visibility**: Tools now expose `pipeline_stages` class attributes and `get_pipeline_info()` methods that document the internal pipeline stages (e.g., `GetObjectGrippingPointsTool` documents its 3-stage pipeline: Point Cloud Extraction → Point Cloud Filtering → Gripping Point Estimation). This makes it clear what stages a tool executes and helps users understand tool behavior and debug pipeline issues.
+
+    - **Service dependency clarity**: Tools now expose `required_services` class attributes, `get_service_info()` methods, and `check_service_dependencies()` methods that document which ROS2 services are required and their current availability status. This makes it clear that tools depend on services (e.g., `GetDetectionTool` requires `DetectionService`), helps users understand deployment requirements, and provides better error messages when services are unavailable.
+
+    These improvements address the role expressiveness dimension by making the relationship between tools, components, and services apparent without requiring users to read implementation details.
+
 3. Results should include confidence and metadata. Tools should return confidence scores, strategy used, and alternative options to help LLM agents make better decisions about retrying or adjusting approaches.
 
 This approach maintains the flexible low-level API in `algorithms/` for power users while providing progressive disclosure: simple for agents, powerful for experts.

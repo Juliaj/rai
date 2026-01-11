@@ -81,6 +81,34 @@ def get_segmentation_service_name(connector: ROS2Connector) -> str:
     return default_service
 
 
+def check_service_available(
+    connector: ROS2Connector, service_name: str, timeout_sec: float = 0.1
+) -> bool:
+    """Check if a ROS2 service is available without waiting.
+
+    Uses a generic service type to check availability. This is a lightweight check
+    that doesn't require knowing the exact service type.
+
+    Args:
+        connector: ROS2 connector with node
+        service_name: Service name to check
+        timeout_sec: Timeout for checking service availability (default: 0.1)
+
+    Returns:
+        True if service is available, False otherwise
+    """
+    # Use std_srvs/Empty as a generic service type for availability checking
+    # This works for any service since we only check if the service exists
+    from std_srvs.srv import Empty
+
+    try:
+        cli = connector.node.create_client(Empty, service_name)
+        return cli.wait_for_service(timeout_sec=timeout_sec)
+    except Exception:
+        # If service creation fails, service is not available
+        return False
+
+
 def create_service_client(
     connector: ROS2Connector,
     service_type: Type,
